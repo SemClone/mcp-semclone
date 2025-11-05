@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "python",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_your_github_token_here_optional",
+        "NVD_API_KEY": "your_nvd_api_key_here_optional",
+        "MCP_LOG_LEVEL": "INFO"
+      },
+      "description": "SEMCL.ONE OSS Compliance and Vulnerability Analysis"
+    },
+    "semclone-local": {
+      "comment": "Alternative configuration for local development",
+      "command": "/usr/local/bin/python3",
+      "args": ["/path/to/mcp-semclone/mcp_semclone/server.py"],
+      "env": {
+        "PYTHONPATH": "/path/to/mcp-semclone",
+        "MCP_LOG_LEVEL": "DEBUG"
+      },
+      "description": "Local development version of SEMCL.ONE MCP server"
+    }
+  },
+  "configuration_notes": [
+    "Place this file at: ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)",
+    "Or at: %APPDATA%/Claude/claude_desktop_config.json (Windows)",
+    "Or at: ~/.config/Claude/claude_desktop_config.json (Linux)",
+    "API keys are optional but recommended for production use",
+    "Remove the 'comment' fields before using - they're for documentation only"
+  ]
+}
