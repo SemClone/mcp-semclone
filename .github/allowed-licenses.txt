@@ -1,0 +1,23 @@
+# Allowed licenses for mcp-semclone project
+# This file is used by the license-check workflow
+
+# Permissive licenses
+Apache-2.0
+MIT
+BSD-2-Clause
+BSD-3-Clause
+ISC
+
+# Other commercial-friendly licenses
+0BSD
+Unlicense
+
+# Python-specific licenses
+PSF-2.0
+Python-2.0
+
+# MCP and related frameworks
+# Add any specific licenses for MCP dependencies here
+
+# Note: GPL licenses are generally not allowed
+# to maintain commercial compatibility

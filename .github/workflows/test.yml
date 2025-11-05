@@ -1,0 +1,49 @@
+name: Tests
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-asyncio
+        pip install -e .[dev] || pip install .
+
+    - name: Install SEMCL.ONE tools
+      run: |
+        pip install osslili src2purl purl2notices ospac vulnq upmex || echo "Some tools may not be available in CI"
+
+    - name: Run tests
+      run: |
+        pytest tests/ -v --tb=short --cov=mcp_semclone
+
+    - name: Upload coverage
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: false
