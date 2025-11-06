@@ -258,4 +258,4 @@ The SEMCL.ONE MCP server provides comprehensive mobile app compliance capabiliti
 - **Mixed Licensing Detection**: Identifies hidden copyleft risks
 - **Mobile-Specific Guidance**: Tailored recommendations for app developers
 
-For questions or support, see the [GitHub repository](https://github.com/scanoss/mcp-semclone).
+For questions or support, see the [GitHub repository](https://github.com/SemClone/mcp-semclone).

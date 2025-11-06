@@ -51,7 +51,7 @@ This automatically installs all required SEMCL.ONE tools:
 ### Development Installation
 
 ```bash
-git clone https://github.com/scanoss/mcp-semclone.git
+git clone https://github.com/SemClone/mcp-semclone.git
 cd mcp-semclone
 pip install -e .[dev]
 ```
@@ -255,10 +255,10 @@ mcp-semclone is released under the Apache License 2.0. See [LICENSE](LICENSE) fo
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/scanoss/mcp-semclone/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/scanoss/mcp-semclone/discussions)
-- **Security**: Report vulnerabilities to security@scanoss.com
+- **Issues**: [GitHub Issues](https://github.com/SemClone/mcp-semclone/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SemClone/mcp-semclone/discussions)
+- **Security**: Report vulnerabilities to security@semcl.one
 
 ---
 
-*Part of the [SEMCL.ONE](https://github.com/scanoss/semcl.one) Software Composition Analysis toolchain*
+*Part of the [SEMCL.ONE](https://github.com/SemClone/semcl.one) Software Composition Analysis toolchain*

@@ -10,7 +10,7 @@ By participating in this project, you agree to abide by our Code of Conduct, whi
 
 ### Reporting Issues
 
-- Check if the issue already exists in the [issue tracker](https://github.com/scanoss/mcp-semclone/issues)
+- Check if the issue already exists in the [issue tracker](https://github.com/SemClone/mcp-semclone/issues)
 - Provide a clear description of the problem
 - Include steps to reproduce the issue
 - Specify your environment (OS, Python version, mcp-semclone version)
@@ -39,7 +39,7 @@ By participating in this project, you agree to abide by our Code of Conduct, whi
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/scanoss/mcp-semclone.git
+   git clone https://github.com/SemClone/mcp-semclone.git
    cd mcp-semclone
    ```
 

@@ -80,7 +80,7 @@ python -m mcp_semclone.server
 ## Additional Resources
 
 - **Project Homepage**: [GitHub Repository](../../)
-- **SEMCL.ONE Toolchain**: [Main Project](https://github.com/scanoss/semcl.one)
+- **SEMCL.ONE Toolchain**: [Main Project](https://github.com/SemClone/semcl.one)
 - **Model Context Protocol**: [MCP Documentation](https://modelcontextprotocol.io/)
 - **License**: See [LICENSE](LICENSE) file
 - **Contributing**: See [CONTRIBUTING](CONTRIBUTING.md) guide

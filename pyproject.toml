@@ -58,9 +58,9 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/scanoss/mcp-semclone"
-"Bug Reports" = "https://github.com/scanoss/mcp-semclone/issues"
-"Source" = "https://github.com/scanoss/mcp-semclone"
+"Homepage" = "https://github.com/SemClone/mcp-semclone"
+"Bug Reports" = "https://github.com/SemClone/mcp-semclone/issues"
+"Source" = "https://github.com/SemClone/mcp-semclone"
 
 [project.scripts]
 mcp-semclone = "mcp_semclone.server:main"
