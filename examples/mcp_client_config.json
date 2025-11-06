@@ -22,9 +22,8 @@
     }
   },
   "configuration_notes": [
-    "Place this file at: ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)",
-    "Or at: %APPDATA%/Claude/claude_desktop_config.json (Windows)",
-    "Or at: ~/.config/Claude/claude_desktop_config.json (Linux)",
+    "Example MCP client configuration for desktop clients",
+    "Adapt paths and configuration for your specific MCP client",
     "API keys are optional but recommended for production use",
     "Remove the 'comment' fields before using - they're for documentation only"
   ]

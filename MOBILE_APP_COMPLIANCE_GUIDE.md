@@ -141,7 +141,7 @@ The SEMCL.ONE approach prioritizes license detection before package identificati
 
 ## Integration Examples
 
-### Claude Desktop Configuration
+### MCP Client Configuration
 ```json
 {
   "mcpServers": {

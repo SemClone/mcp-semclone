@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server that provides LLMs with comprehensive OSS co
 
 ## Overview
 
-mcp-semclone integrates the complete SEMCL.ONE toolchain to provide AI assistants with powerful software composition analysis capabilities:
+mcp-semclone integrates the complete SEMCL.ONE toolchain to provide LLMs with powerful software composition analysis capabilities:
 
 - **License Detection & Compliance**: Scan codebases for licenses and validate against policies
 - **Vulnerability Assessment**: Query multiple vulnerability databases for security issues
@@ -67,9 +67,9 @@ pip install -e .
 
 ## Configuration
 
-### Claude Desktop Integration
+### MCP Client Integration
 
-Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+Add to your MCP client configuration file:
 
 ```json
 {
@@ -104,9 +104,9 @@ export OSPAC_PATH="/path/to/ospac"
 
 ## Usage Examples
 
-### With Claude Desktop
+### With MCP Clients
 
-Once configured, you can ask Claude:
+Once configured, you can ask your LLM:
 
 - "Scan /path/to/project for license compliance issues"
 - "Check if this project has any critical vulnerabilities"
@@ -174,7 +174,7 @@ asyncio.run(main())
 ```
 ┌─────────────┐
 │   LLM Client    │
-│  (Claude, etc)  │
+│  (MCP Client)    │
 └────────┬────────┘
          │ MCP Protocol
 ┌────────▼────────┐
