@@ -34,35 +34,26 @@ mcp-semclone integrates the complete SEMCL.ONE toolchain to provide LLMs with po
 
 ## Installation
 
-### Prerequisites
-
-First, install all SEMCL.ONE tools:
-
-```bash
-# Install individual tools
-pip install osslili     # License detection
-pip install src2purl     # Package discovery
-pip install purl2notices # License notices extraction
-pip install ospac        # Policy validation
-pip install vulnq        # Vulnerability queries
-pip install upmex        # Package metadata extraction
-
-# Or install all at once
-pip install osslili src2purl purl2notices ospac vulnq upmex
-```
-
-### Install MCP Server
+### Single Command Installation
 
 ```bash
 pip install mcp-semclone
 ```
 
-For development:
+This automatically installs all required SEMCL.ONE tools:
+- **osslili** - License detection from source code
+- **src2purl** - Package discovery and PURL generation
+- **purl2notices** - License notices extraction
+- **ospac** - Policy validation engine
+- **vulnq** - Vulnerability database queries
+- **upmex** - Package metadata extraction
+
+### Development Installation
 
 ```bash
 git clone https://github.com/scanoss/mcp-semclone.git
 cd mcp-semclone
-pip install -e .
+pip install -e .[dev]
 ```
 
 ## Configuration
