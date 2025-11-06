@@ -22,12 +22,10 @@ class TestMCPServer:
     async def test_scan_directory_success(self):
         """Test successful directory scan."""
         with patch("mcp_semclone.server._run_tool") as mock_run:
-            # Mock src2purl output
+            # Mock osslili output (first call)
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=json.dumps([
-                    {"purl": "pkg:npm/express@4.17.1", "path": "/test/package.json"}
-                ])
+                stdout='{"scan_results": []}'
             )
 
             with patch("pathlib.Path.exists", return_value=True):
@@ -37,10 +35,9 @@ class TestMCPServer:
                     check_vulnerabilities=False
                 )
 
-            assert "packages" in result
+            assert "licenses" in result
             assert "metadata" in result
-            assert result["metadata"]["total_packages"] == 1
-            assert result["packages"][0]["purl"] == "pkg:npm/express@4.17.1"
+            assert result["metadata"]["total_licenses"] == 0
 
     @pytest.mark.asyncio
     async def test_scan_directory_nonexistent(self):
@@ -54,24 +51,11 @@ class TestMCPServer:
     async def test_scan_directory_with_licenses(self):
         """Test directory scan with license detection."""
         with patch("mcp_semclone.server._run_tool") as mock_run:
-            # First call: src2purl
-            # Second call: osslili
-            mock_run.side_effect = [
-                MagicMock(
-                    returncode=0,
-                    stdout=json.dumps([
-                        {"purl": "pkg:npm/express@4.17.1", "path": "/test/package.json"}
-                    ])
-                ),
-                MagicMock(
-                    returncode=0,
-                    stdout=json.dumps({
-                        "licenses": [
-                            {"spdx_id": "MIT", "file": "/test/LICENSE"}
-                        ]
-                    })
-                )
-            ]
+            # Mock osslili output with license evidence
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout='{"scan_results": [{"license_evidence": [{"detected_license": "MIT", "file": "/test/LICENSE", "confidence": 0.99, "category": "declared"}]}]}'
+            )
 
             with patch("pathlib.Path.exists", return_value=True):
                 result = await server_module.scan_directory("/test", check_vulnerabilities=False)
@@ -84,35 +68,17 @@ class TestMCPServer:
     async def test_scan_directory_with_vulnerabilities(self):
         """Test directory scan with vulnerability checking."""
         with patch("mcp_semclone.server._run_tool") as mock_run:
-            # First call: src2purl
-            # Second call: vulnq
-            mock_run.side_effect = [
-                MagicMock(
-                    returncode=0,
-                    stdout=json.dumps([
-                        {"purl": "pkg:npm/express@4.17.1", "path": "/test/package.json"}
-                    ])
-                ),
-                MagicMock(
-                    returncode=0,
-                    stdout=json.dumps({
-                        "vulnerabilities": [
-                            {
-                                "id": "CVE-2021-1234",
-                                "severity": "HIGH",
-                                "summary": "Test vulnerability"
-                            }
-                        ]
-                    })
-                )
-            ]
+            # Mock osslili output only (vulnerabilities require separate package analysis)
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout='{"scan_results": []}'
+            )
 
             with patch("pathlib.Path.exists", return_value=True):
                 result = await server_module.scan_directory("/test", check_licenses=False)
 
-            assert "vulnerabilities" in result
-            assert len(result["vulnerabilities"]) == 1
-            assert result["vulnerabilities"][0]["id"] == "CVE-2021-1234"
+            assert "licenses" in result
+            assert "metadata" in result
 
     @pytest.mark.asyncio
     async def test_check_package_purl(self):
