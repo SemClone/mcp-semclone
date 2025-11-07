@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Comprehensive server instructions for LLM context injection
+- Workflow pattern documentation (license-first approach, tool execution order)
+- Tool selection guidance for different compliance scenarios
+- Performance constraint documentation (timeouts, depth limits, package limits)
+- Input format requirements and examples (PURLs, CPEs, SPDX identifiers)
+- Common usage workflow examples for typical scenarios
+- Enhanced resource access documentation
+
+### Improved
+- LLM understanding of when and how to use each tool effectively
+- Automatic optimization of tool selection based on task requirements
+- Better error handling guidance for LLMs
+- Documentation of tool dependencies and interactions
+
 ## [0.1.0] - 2025-11-05
 
 ### Added

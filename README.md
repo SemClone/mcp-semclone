@@ -184,6 +184,36 @@ asyncio.run(main())
 └──────────────────────────────┘
 ```
 
+## Server Instructions for LLMs
+
+The MCP server includes comprehensive instructions that help LLMs understand how to use the tools effectively. These instructions are automatically injected into the LLM's context when using the server, providing:
+
+### Workflow Patterns
+- **License-first approach**: The server prioritizes license detection before package identification or vulnerability scanning
+- **Efficient execution order**: Tools are orchestrated in an optimal sequence (licenses → packages → vulnerabilities → policy validation)
+- **Smart dependency handling**: Package identification is only performed when needed for vulnerability checks or detailed SBOMs
+
+### Tool Selection Guidance
+- When to use `scan_directory` (comprehensive analysis) vs `check_package` (single package lookup)
+- How tools interact (e.g., `generate_sbom` automatically calls `scan_directory` internally)
+- Specialized tools for specific scenarios (e.g., `analyze_commercial_risk` for mobile/commercial distribution)
+
+### Performance Optimization
+- Vulnerability scanning is limited to the first 10 packages to avoid timeouts
+- Recursive scanning depth limits: 10 for licenses, 5 for package identification
+- 120-second timeout per tool invocation
+- Guidance for handling large codebases
+
+### Common Usage Patterns
+The server provides ready-to-use workflow examples:
+1. **Basic compliance check**: License inventory without package identification
+2. **Full security assessment**: Complete vulnerability analysis with package discovery
+3. **Policy validation**: Automated license compliance checking
+4. **Commercial risk analysis**: Copyleft detection for mobile/commercial use
+5. **SBOM generation**: Supply chain transparency documentation
+
+This enables LLMs to automatically choose the right tool combination, optimize performance, and follow best practices without requiring user expertise in OSS compliance workflows.
+
 ## Tool Integration
 
 The MCP server orchestrates multiple SEMCL.ONE tools:

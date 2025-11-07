@@ -108,7 +108,7 @@ pre-commit run --all-files
 - Update the README.md if you change functionality
 - Add docstrings to all public functions and classes
 - Update CHANGELOG.md following [Keep a Changelog](https://keepachangelog.com/) format
-- Update MOBILE_APP_COMPLIANCE_GUIDE.md for workflow changes
+- Update guides/MOBILE_APP_COMPLIANCE_GUIDE.md for workflow changes
 
 ## Adding New MCP Tools
 

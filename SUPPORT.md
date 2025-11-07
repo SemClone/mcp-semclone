@@ -8,7 +8,7 @@ Thank you for using mcp-semclone! Here are the best ways to get help:
 
 - Check the [README](README.md) for basic usage and setup instructions
 - Review the [CONTRIBUTING](CONTRIBUTING.md) guide for development setup
-- See the [Mobile App Compliance Guide](MOBILE_APP_COMPLIANCE_GUIDE.md) for workflow instructions
+- See the [Mobile App Compliance Guide](guides/MOBILE_APP_COMPLIANCE_GUIDE.md) for workflow instructions
 - Look through existing documentation in the `/examples` folder
 
 ### Getting Answers
