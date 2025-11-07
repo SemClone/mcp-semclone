@@ -34,7 +34,49 @@ class ScanResult(BaseModel):
 # Initialize FastMCP server
 mcp = FastMCP(
     name="mcp-semclone",
-    instructions="MCP server for SEMCL.ONE OSS compliance and vulnerability analysis"
+    instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
+
+WORKFLOW PATTERNS:
+1. License-first approach: Always scan for licenses before identifying packages or vulnerabilities
+2. Tool execution order: licenses (osslili) → packages (src2purl) → vulnerabilities (vulnq) → policy validation (ospac)
+3. Package identification is optional and only required when checking vulnerabilities or generating detailed SBOMs
+4. Vulnerability checks automatically trigger package identification if not already performed
+
+TOOL SELECTION GUIDE:
+- scan_directory: Primary tool for analyzing projects/codebases. Use for comprehensive license inventory, optional package identification, and vulnerability assessment
+- check_package: Use when you have a specific package identifier (PURL, CPE, or file) to analyze. Checks both vulnerabilities and licenses for individual packages
+- validate_policy: Standalone license policy validation. Use when you already have license data and need to check compliance
+- analyze_commercial_risk: Specialized tool for commercial distribution risk assessment. Detects copyleft licenses and mixed licensing in data files
+- generate_mobile_legal_notice: Creates legal notices for mobile app distribution. Use after identifying licenses in dependencies
+- generate_sbom: Automatically calls scan_directory internally to generate Software Bill of Materials
+
+PERFORMANCE CONSTRAINTS:
+1. Vulnerability scanning limited to first 10 packages to avoid timeouts
+2. Tool execution timeout: 120 seconds per tool invocation
+3. Recursive scanning depth limits: max-depth 10 for license scans, max-depth 5 for package identification
+4. Large codebases: Consider scanning specific subdirectories rather than entire repository
+
+INPUT FORMAT REQUIREMENTS:
+- Package identifiers: Accepts PURLs (pkg:npm/package@1.0), CPEs (cpe:2.3:a:vendor:product), or file paths
+- Paths: Absolute or relative paths to files or directories
+- License lists: Array of SPDX license identifiers (e.g., ["Apache-2.0", "MIT"])
+- Policy files: JSON or YAML format policy definitions for ospac tool
+
+COMMON WORKFLOWS:
+1. Basic compliance check: scan_directory(path, check_licenses=True, identify_packages=False)
+2. Full security assessment: scan_directory(path, check_vulnerabilities=True) - automatically enables package identification
+3. Policy validation: scan_directory(path, policy_file="policy.json") → validate_policy(licenses, policy_file)
+4. Commercial risk analysis: analyze_commercial_risk(path) for mobile/commercial distribution decisions
+5. SBOM generation: generate_sbom(path, format="spdx") for supply chain transparency
+
+RESOURCE ACCESS:
+- semcl://license_database: Retrieves comprehensive license compatibility database from ospac
+- semcl://policy_templates: Returns pre-configured policy templates (commercial, open_source, internal)
+
+ERROR HANDLING:
+- Tools return {"error": "message"} on failures
+- Non-zero exit codes are logged but don't always indicate failure (check returned data)
+- Missing CLI tools (src2purl, osslili, vulnq, ospac) will raise FileNotFoundError"""
 )
 
 # Global tool paths configuration
@@ -62,7 +104,7 @@ def _run_tool(tool_name: str, args: List[str],
             input=input_data,
             capture_output=True,
             text=True,
-            timeout=60  # 60 second timeout
+            timeout=120  # 120 second timeout for slower tools like src2purl
         )
 
         if result.returncode != 0:
@@ -85,11 +127,26 @@ def _run_tool(tool_name: str, args: List[str],
 async def scan_directory(
     path: str,
     recursive: bool = True,
-    check_vulnerabilities: bool = True,
+    check_vulnerabilities: bool = False,
     check_licenses: bool = True,
+    identify_packages: bool = False,
     policy_file: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Scan a directory for compliance issues."""
+    """
+    Scan a directory for compliance issues using osslili-first approach.
+
+    By default, only scans for licenses using osslili. Package identification with src2purl
+    is only performed when explicitly requested via identify_packages=True or when
+    check_vulnerabilities=True (since vulnerabilities require package coordinates).
+
+    Args:
+        path: Directory or file path to scan
+        recursive: Enable recursive scanning
+        check_vulnerabilities: Check for vulnerabilities (requires package identification)
+        check_licenses: Scan for license information using osslili
+        identify_packages: Use src2purl to identify upstream package coordinates
+        policy_file: Optional policy file for license compliance validation
+    """
     result = ScanResult()
     path_obj = Path(path)
 
@@ -142,42 +199,43 @@ async def scan_directory(
                 policy_result = json.loads(ospac_result.stdout)
                 result.policy_violations = policy_result.get("violations", [])
 
-        # Step 3: Identify upstream repository coordinates using SCANOSS/src2purl
+        # Step 3: Only identify upstream repository coordinates if explicitly requested
         # This provides official package coordinates for vulnerability and guidance lookup
-        logger.info(f"Identifying upstream coordinates for {path}")
-        src2purl_args = [str(path), "--output-format", "json", "--enable-fuzzy"]
-        if recursive:
-            src2purl_args.extend(["--max-depth", "5"])
+        if identify_packages or check_vulnerabilities:
+            logger.info(f"Identifying upstream coordinates for {path}")
+            src2purl_args = [str(path), "--output-format", "json", "--enable-fuzzy"]
+            if recursive:
+                src2purl_args.extend(["--max-depth", "5"])
 
-        src2purl_result = _run_tool("src2purl", src2purl_args)
-        if src2purl_result.returncode == 0 and src2purl_result.stdout:
-            # Parse src2purl JSON output correctly
-            stdout_lines = src2purl_result.stdout.split('\n')
-            json_start = -1
-            for i, line in enumerate(stdout_lines):
-                if line.strip().startswith('{'):
-                    json_start = i
-                    break
+            src2purl_result = _run_tool("src2purl", src2purl_args)
+            if src2purl_result.returncode == 0 and src2purl_result.stdout:
+                # Parse src2purl JSON output correctly
+                stdout_lines = src2purl_result.stdout.split('\n')
+                json_start = -1
+                for i, line in enumerate(stdout_lines):
+                    if line.strip().startswith('{'):
+                        json_start = i
+                        break
 
-            if json_start >= 0:
-                json_text = '\n'.join(stdout_lines[json_start:]).strip()
-                packages_data = json.loads(json_text)
-                # Convert src2purl format to expected format
-                packages = []
-                for match in packages_data.get("matches", []):
-                    packages.append({
-                        "purl": match.get("purl"),
-                        "name": match.get("name"),
-                        "version": match.get("version"),
-                        "confidence": match.get("confidence"),
-                        "upstream_license": match.get("license"),
-                        "match_type": match.get("type"),
-                        "url": match.get("url"),
-                        "official": match.get("official", False)
-                    })
-                result.packages = packages
+                if json_start >= 0:
+                    json_text = '\n'.join(stdout_lines[json_start:]).strip()
+                    packages_data = json.loads(json_text)
+                    # Convert src2purl format to expected format
+                    packages = []
+                    for match in packages_data.get("matches", []):
+                        packages.append({
+                            "purl": match.get("purl"),
+                            "name": match.get("name"),
+                            "version": match.get("version"),
+                            "confidence": match.get("confidence"),
+                            "upstream_license": match.get("license"),
+                            "match_type": match.get("type"),
+                            "url": match.get("url"),
+                            "official": match.get("official", False)
+                        })
+                    result.packages = packages
 
-        # Step 4: Only check vulnerabilities if requested
+        # Step 4: Only check vulnerabilities if requested and packages are available
         if check_vulnerabilities and result.packages:
             logger.info("Cross-referencing upstream coordinates with vulnerability databases")
             vulnerabilities = []
