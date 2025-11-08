@@ -8,5 +8,5 @@ include CODE_OF_CONDUCT.md
 include SUPPORT.md
 recursive-include mcp_semclone *.py
 recursive-include tests *.py
-recursive-include examples *.py *.json
+recursive-include examples *.py *.json *.md *.yaml *.sh *.txt
 recursive-include guides *.md
