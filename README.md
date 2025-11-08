@@ -254,6 +254,45 @@ The MCP server orchestrates multiple SEMCL.ONE tools:
 5. **purl2notices**: Extracts license notices and copyright
 6. **upmex**: Extracts package metadata from manifests
 
+## Examples
+
+### Basic MCP Client Usage
+
+See [`examples/basic_usage.py`](examples/basic_usage.py) for simple examples of calling MCP tools directly.
+
+### Strands Agent with Ollama
+
+A complete autonomous agent example demonstrating OSS compliance analysis using local LLM (Ollama) with MCP integration.
+
+**Location**: `examples/strands-agent-ollama/`
+
+**Features:**
+- Autonomous decision-making (plan → execute → interpret → report)
+- Local LLM inference via Ollama (llama3, gemma3, deepseek-r1)
+- Interactive and batch analysis modes
+- Custom policy enforcement
+- Complete privacy (no external API calls)
+
+**Quick Start:**
+```bash
+cd examples/strands-agent-ollama
+./quickstart.sh
+python agent.py interactive
+```
+
+**Documentation:**
+- [README.md](examples/strands-agent-ollama/README.md) - Complete usage guide
+- [TUNING.md](examples/strands-agent-ollama/TUNING.md) - Optimization guide
+- [OVERVIEW.md](examples/strands-agent-ollama/OVERVIEW.md) - Architecture reference
+
+**Use Cases:**
+- Mobile app compliance (APK/IPA analysis)
+- Embedded/IoT firmware scanning
+- CI/CD integration
+- Interactive compliance queries
+
+See the [example directory](examples/strands-agent-ollama/) for full details.
+
 ## Development
 
 ### Running Tests
