@@ -1,0 +1,64 @@
+# Example OSS License Policy
+# This policy is used by the agent to validate compliance
+
+policy_name: "Example Enterprise OSS Policy"
+version: "1.0"
+description: "Conservative policy suitable for commercial mobile apps"
+
+# Allowed licenses (permissive, compatible with proprietary software)
+allowed_licenses:
+  - MIT
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - Unlicense
+  - CC0-1.0
+  - BSL-1.0  # Boost Software License
+
+# Licenses requiring review (weak copyleft, special conditions)
+review_required:
+  - LGPL-2.1
+  - LGPL-3.0
+  - MPL-2.0
+  - EPL-2.0
+  - CDDL-1.0
+
+# Blocked licenses (strong copyleft, incompatible with App Stores)
+blocked_licenses:
+  - GPL-2.0
+  - GPL-3.0
+  - AGPL-3.0
+  - SSPL-1.0
+  - CC-BY-SA-4.0
+
+# Distribution channels
+distribution:
+  app_stores: true              # Distributing via iOS/Android app stores
+  saas: false                   # SaaS deployment
+  embedded: false               # Embedded in hardware
+
+# Requirements
+requirements:
+  require_attribution: true     # Must include license notices
+  require_source_disclosure: false  # Don't want to disclose source
+  allow_modifications: true     # OK to modify OSS components
+  allow_commercial_use: true    # Commercial use required
+
+# Special rules
+rules:
+  # Block AGPL in all forms (network copyleft)
+  - rule: "block_agpl"
+    pattern: "AGPL*"
+    reason: "Network copyleft incompatible with SaaS model"
+
+  # Require explicit approval for dual-licensed code
+  - rule: "review_dual_licensed"
+    pattern: "*GPL* OR *"
+    reason: "Ensure compatible license option is used"
+
+# Notifications
+notifications:
+  email_on_violation: false
+  slack_webhook: null
+  block_on_violation: true      # Fail builds with violations
