@@ -366,4 +366,4 @@ MCP-SEMCLONE v1.2.0 provides **95% capability** for OSS compliance use cases, an
 
 *Last Updated: 2025-11-07*
 *Document Version: 1.0*
-*MCP-SEMCLONE Version: 1.2.0*
+*MCP-SEMCLONE Version: 1.3.0*

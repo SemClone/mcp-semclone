@@ -1150,7 +1150,7 @@ async def generate_sbom(
             "licenses": scan_result.get("licenses", []),
             "creationInfo": {
                 "created": "2025-01-05T00:00:00Z",
-                "creators": ["Tool: mcp-semclone-1.0.0"]
+                "creators": ["Tool: mcp-semclone-1.3.0"]
             }
         }
 
