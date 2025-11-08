@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
 import argparse
 
 try:
@@ -87,6 +88,7 @@ class StrandsComplianceAgent:
 
         print("✅ Agent initialized")
 
+    @asynccontextmanager
     async def connect_mcp(self):
         """Connect to MCP server and discover tools."""
         print("\n🔌 Connecting to MCP server...")
