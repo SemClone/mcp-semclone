@@ -95,10 +95,10 @@ ollama run gemma3:2b "Explain GPL-3.0 license obligations"
 
 ```bash
 # Use different model for specific analysis
-python agent.py analyze /path/to/project --model deepseek-r1:8b
+python agent.py /path/to/project --model deepseek-r1:8b
 
-# Interactive mode with custom model
-python agent.py interactive --model mistral:7b
+# Use verbose output for debugging
+python agent.py /path/to/project --model gemma3:2b --verbose
 ```
 
 ---
@@ -134,7 +134,7 @@ llm:
 **Use when**:
 - Production compliance analysis
 - General purpose scanning
-- Interactive assistance
+- Standard analysis workflows
 
 **Behavior**: Mostly deterministic with slight variation
 **Trade-off**: Best balance for compliance work

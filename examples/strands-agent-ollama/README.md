@@ -71,26 +71,16 @@ ollama list
 
 ```bash
 # Analyze a directory
-python agent.py analyze /path/to/project
+python agent.py /path/to/project
 
 # Analyze a binary file
-python agent.py analyze /path/to/app.apk
+python agent.py /path/to/app.apk
 
-# Interactive mode
-python agent.py interactive
-```
+# Use verbose output
+python agent.py /path/to/project --verbose
 
-### Advanced Examples
-
-```bash
-# Full mobile app compliance workflow
-python agent.py mobile-compliance /path/to/app.apk
-
-# Batch analysis with custom policy
-python agent.py batch /path/to/projects --policy policy.yaml
-
-# Generate compliance report
-python agent.py report /path/to/project --format markdown
+# Use a different model
+python agent.py /path/to/project --model gemma3
 ```
 
 ## How It Works

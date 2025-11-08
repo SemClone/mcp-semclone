@@ -59,10 +59,7 @@ cd examples/strands-agent-ollama
 ./quickstart.sh
 
 # 3. Analyze something
-python agent.py analyze /path/to/project
-
-# 4. Or try interactive mode
-python agent.py interactive
+python agent.py /path/to/project
 ```
 
 ## Architecture
@@ -145,19 +142,7 @@ Agent automatically selects appropriate mode:
 - **standard**: Production scans (15s) ← default
 - **deep**: Legal review, critical (45s)
 
-### 3. Interactive Mode
-
-Chat interface for exploration:
-
-```
-You: What licenses require attribution?
-Agent: [explains with examples]
-
-You: analyze /path/to/project
-Agent: [performs full analysis]
-```
-
-### 4. Policy Enforcement
+### 3. Policy Enforcement
 
 Custom policies in YAML:
 
@@ -202,17 +187,6 @@ python agent.py analyze . --model gemma3:2b --policy strict.yaml
 - Fast scanning for continuous integration
 - Fails build on policy violations
 - Reproducible results (temp=0.0)
-
-### ✅ Interactive Compliance Assistant
-
-```bash
-python agent.py interactive
-```
-
-- Ask questions about licenses
-- Explore projects interactively
-- Learn OSS compliance concepts
-- Get real-time guidance
 
 ## Tuning for Your Needs
 
@@ -268,7 +242,7 @@ analysis:
 | **Adaptability** | Handles edge cases | Fixed logic |
 | **Explanations** | Natural language | Error codes |
 | **Learning** | Can improve prompts | Static |
-| **User Experience** | Interactive chat | Command line |
+| **User Experience** | Intelligent analysis | Command line |
 
 ## Performance Metrics
 
@@ -407,7 +381,7 @@ mcp:
 1. **Try the Basic Example**
    ```bash
    ./quickstart.sh
-   python agent.py interactive
+   python agent.py /path/to/project
    ```
 
 2. **Analyze Your First Project**
