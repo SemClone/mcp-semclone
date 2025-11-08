@@ -46,6 +46,10 @@ TOOL SELECTION GUIDE:
 - scan_directory: Primary tool for analyzing projects/codebases. Use for comprehensive license inventory, optional package identification, and vulnerability assessment
 - check_package: Use when you have a specific package identifier (PURL, CPE, or file) to analyze. Checks both vulnerabilities and licenses for individual packages
 - validate_policy: Standalone license policy validation. Use when you already have license data and need to check compliance
+- validate_license_list: Quick validation of license list for distribution safety. Answers "Can I ship MIT+Apache to App Store?" without requiring filesystem
+- get_license_obligations: Get detailed compliance requirements for specific licenses. Answers "What must I do to comply?"
+- check_license_compatibility: Check if two licenses can be used together. Answers "Can I mix MIT with GPL?"
+- get_license_details: Get comprehensive information about a license including full text. Use for generating NOTICE files
 - analyze_commercial_risk: Specialized tool for commercial distribution risk assessment. Detects copyleft licenses and mixed licensing in data files
 - generate_mobile_legal_notice: Creates legal notices for mobile app distribution. Use after identifying licenses in dependencies
 - generate_sbom: Automatically calls scan_directory internally to generate Software Bill of Materials
@@ -173,9 +177,13 @@ async def scan_directory(
             if json_start >= 0:
                 json_text = '\n'.join(stdout_lines[json_start:]).strip()
                 licenses_data = json.loads(json_text)
+
                 # Extract license evidence and convert to expected format
                 license_evidence = []
+                copyright_info = []
+
                 for scan_result in licenses_data.get("scan_results", []):
+                    # Extract license evidence
                     for evidence in scan_result.get("license_evidence", []):
                         license_evidence.append({
                             "spdx_id": evidence.get("detected_license"),
@@ -185,19 +193,44 @@ async def scan_directory(
                             "category": evidence.get("category"),
                             "description": evidence.get("description")
                         })
+
+                    # Extract copyright information
+                    for copyright_evidence in scan_result.get("copyright_evidence", []):
+                        copyright_info.append({
+                            "holder": copyright_evidence.get("holder"),
+                            "year": copyright_evidence.get("year"),
+                            "statement": copyright_evidence.get("statement"),
+                            "file": copyright_evidence.get("file"),
+                            "confidence": copyright_evidence.get("confidence", "high")
+                        })
+
                 result.licenses = license_evidence
+
+                # Add copyright information to metadata if found
+                if copyright_info:
+                    result.metadata["copyright_holders"] = list(set([c["holder"] for c in copyright_info if c.get("holder")]))
+                    result.metadata["copyright_info"] = copyright_info
+                    result.metadata["copyrights_found"] = len(copyright_info)
 
         # Step 2: Validate against policy if provided
         if check_licenses and policy_file and result.licenses:
             logger.info(f"Validating against policy: {policy_file}")
-            ospac_args = ["evaluate", "--policy", policy_file, "--json"]
-            # Pass licenses to ospac
+            # Extract unique licenses and pass as comma-separated string
             license_list = [lic.get("spdx_id") for lic in result.licenses if lic.get("spdx_id")]
-            ospac_input = json.dumps({"licenses": license_list})
-            ospac_result = _run_tool("ospac", ospac_args, input_data=ospac_input)
-            if ospac_result.returncode == 0 and ospac_result.stdout:
-                policy_result = json.loads(ospac_result.stdout)
-                result.policy_violations = policy_result.get("violations", [])
+            if license_list:
+                licenses_str = ",".join(license_list)
+                ospac_args = ["evaluate", "-l", licenses_str, "--policy-dir", policy_file, "-o", "json"]
+                ospac_result = _run_tool("ospac", ospac_args, input_data=None)
+                if ospac_result.returncode == 0 and ospac_result.stdout:
+                    policy_result = json.loads(ospac_result.stdout)
+                    # Check if result indicates violations (action is deny or review)
+                    result_data = policy_result.get("result", {})
+                    if result_data.get("action") in ["deny", "review"]:
+                        result.policy_violations = [{
+                            "message": result_data.get("message", "Policy violation detected"),
+                            "severity": result_data.get("severity", "warning"),
+                            "action": result_data.get("action")
+                        }]
 
         # Step 3: Only identify upstream repository coordinates if explicitly requested
         # This provides official package coordinates for vulnerability and guidance lookup
@@ -334,16 +367,16 @@ async def validate_policy(
 ) -> Dict[str, Any]:
     """Validate licenses against a policy."""
     try:
-        ospac_args = ["evaluate", "--distribution", distribution]
+        # Build ospac evaluate command with licenses as comma-separated string
+        licenses_str = ",".join(licenses)
+        ospac_args = ["evaluate", "-l", licenses_str, "-d", distribution, "-o", "json"]
+
+        # Only add policy-dir if explicitly provided (otherwise uses default)
         if policy_file:
-            ospac_args.extend(["--policy", policy_file])
-        ospac_args.append("--json")
+            ospac_args.extend(["--policy-dir", policy_file])
 
-        # Prepare input
-        ospac_input = json.dumps({"licenses": licenses})
-
-        # Run validation
-        result = _run_tool("ospac", ospac_args, input_data=ospac_input)
+        # Run validation (no stdin input needed)
+        result = _run_tool("ospac", ospac_args, input_data=None)
 
         if result.returncode == 0 and result.stdout:
             return json.loads(result.stdout)
@@ -352,6 +385,209 @@ async def validate_policy(
 
     except Exception as e:
         logger.error(f"Error validating policy: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def get_license_obligations(
+    licenses: List[str],
+    output_format: str = "json"
+) -> Dict[str, Any]:
+    """
+    Get detailed obligations for specified licenses.
+
+    This tool answers the critical question: "What must I do to comply with these licenses?"
+
+    Args:
+        licenses: List of SPDX license IDs (e.g., ["MIT", "Apache-2.0", "GPL-3.0"])
+        output_format: Output format (json, text, checklist, markdown)
+
+    Returns:
+        Comprehensive obligations including:
+        - Required actions (attribution, notices, disclosure, etc.)
+        - Permissions (commercial use, modification, distribution, etc.)
+        - Limitations (liability, warranty, trademark use, etc.)
+        - Conditions (source disclosure, license preservation, state changes, etc.)
+        - Key requirements for compliance
+
+    Example:
+        For MIT license, returns obligations like:
+        - Include original license text in distributions
+        - Preserve copyright notices
+        - No trademark rights granted
+    """
+    try:
+        licenses_str = ",".join(licenses)
+        ospac_args = ["obligations", "-l", licenses_str, "-f", output_format]
+
+        logger.info(f"Getting obligations for licenses: {licenses_str}")
+        result = _run_tool("ospac", ospac_args, input_data=None)
+
+        if result.returncode == 0 and result.stdout:
+            if output_format == "json":
+                data = json.loads(result.stdout)
+                # Enhance with summary
+                if "license_data" in data:
+                    license_data = data["license_data"]
+                    summary = {
+                        "total_licenses": len(licenses),
+                        "licenses_analyzed": list(license_data.keys()),
+                        "obligations": license_data
+                    }
+                    return summary
+                return data
+            else:
+                return {"obligations": result.stdout, "format": output_format}
+        else:
+            return {"error": f"Failed to get obligations: {result.stderr}"}
+
+    except Exception as e:
+        logger.error(f"Error getting obligations: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def check_license_compatibility(
+    license1: str,
+    license2: str,
+    context: str = "general"
+) -> Dict[str, Any]:
+    """
+    Check if two licenses are compatible for use together.
+
+    This tool answers: "Can I combine code under these two licenses?"
+
+    Args:
+        license1: First SPDX license ID (e.g., "MIT")
+        license2: Second SPDX license ID (e.g., "GPL-3.0")
+        context: Usage context (general, static_linking, dynamic_linking)
+
+    Returns:
+        Compatibility assessment including:
+        - compatible: True/False indicating if licenses can be combined
+        - reason: Explanation of why they are/aren't compatible
+        - restrictions: Any special conditions or restrictions
+        - recommendations: Suggested actions if incompatible
+
+    Example:
+        Checking MIT vs GPL-3.0 returns:
+        - compatible: False
+        - reason: GPL-3.0 is strongly copyleft and requires derivative works to be GPL-3.0
+        - recommendations: Use dynamic linking, keep code separate, or relicense
+    """
+    try:
+        ospac_args = ["check", license1, license2, "-c", context, "-o", "json"]
+
+        logger.info(f"Checking compatibility: {license1} vs {license2} (context: {context})")
+        result = _run_tool("ospac", ospac_args, input_data=None)
+
+        if result.returncode == 0 and result.stdout:
+            data = json.loads(result.stdout)
+            # Enhance output with clear messaging
+            if "compatible" in data:
+                data["summary"] = (
+                    f"{license1} and {license2} are {'compatible' if data['compatible'] else 'incompatible'}"
+                    f" in {context} context"
+                )
+            return data
+        else:
+            return {"error": f"Compatibility check failed: {result.stderr}"}
+
+    except Exception as e:
+        logger.error(f"Error checking compatibility: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def get_license_details(
+    license_id: str,
+    include_full_text: bool = False
+) -> Dict[str, Any]:
+    """
+    Get comprehensive details about a specific license.
+
+    This tool provides complete license information including the full license text
+    for generating NOTICE files and understanding license requirements.
+
+    Args:
+        license_id: SPDX license ID (e.g., "Apache-2.0", "MIT", "GPL-3.0")
+        include_full_text: Include full license text (can be long, ~5-20KB)
+
+    Returns:
+        License information including:
+        - name: Full license name
+        - type: License category (permissive, copyleft_weak, copyleft_strong, etc.)
+        - properties: Characteristics (OSI approved, FSF free, etc.)
+        - permissions: What you CAN do (commercial use, modify, distribute, etc.)
+        - requirements: What you MUST do (include license, preserve copyright, etc.)
+        - limitations: What is NOT provided (liability, warranty, etc.)
+        - obligations: Specific compliance requirements
+        - full_text: Complete license text (if include_full_text=True, fetched from SPDX API)
+
+    Example:
+        For Apache-2.0, returns complete license data including:
+        - Full license text for NOTICE files
+        - Patent grant information
+        - Attribution requirements
+    """
+    try:
+        ospac_args = ["data", "show", license_id, "-f", "json"]
+
+        logger.info(f"Getting details for license: {license_id}")
+        result = _run_tool("ospac", ospac_args, input_data=None)
+
+        if result.returncode == 0 and result.stdout:
+            data = json.loads(result.stdout)
+
+            # Extract license data from the response (ospac returns it directly, not nested)
+            license_info = data if "license_id" not in data and "id" in data else data.get("license_data", {}).get(license_id, data)
+
+            # Fetch full text from SPDX API if requested
+            if include_full_text:
+                try:
+                    import urllib.request
+                    import urllib.error
+
+                    # SPDX API endpoint for license text
+                    spdx_url = f"https://raw.githubusercontent.com/spdx/license-list-data/main/text/{license_id}.txt"
+
+                    logger.info(f"Fetching full license text from SPDX for {license_id}")
+
+                    req = urllib.request.Request(spdx_url)
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        full_text = response.read().decode('utf-8')
+                        license_info["full_text"] = full_text
+                        license_info["full_text_source"] = "SPDX License List (GitHub)"
+                        logger.info(f"Successfully fetched {len(full_text)} characters of license text")
+
+                except urllib.error.HTTPError as e:
+                    if e.code == 404:
+                        logger.warning(f"Full text not available for {license_id} from SPDX")
+                        license_info["full_text"] = "[Full text not available - license may be deprecated or use non-standard identifier]"
+                        license_info["full_text_source"] = "unavailable"
+                    else:
+                        logger.warning(f"HTTP error fetching license text: {e}")
+                        license_info["full_text"] = f"[Error fetching full text: HTTP {e.code}]"
+                        license_info["full_text_source"] = "error"
+
+                except Exception as e:
+                    logger.warning(f"Could not fetch full license text: {e}")
+                    license_info["full_text"] = "[Full text unavailable - network error or timeout]"
+                    license_info["full_text_source"] = "error"
+            else:
+                # Inform user that full text is available
+                license_info["full_text_available"] = True
+                license_info["full_text"] = "[Full text available - set include_full_text=true to retrieve from SPDX]"
+
+            # Add helpful summary
+            license_info["license_id"] = license_id
+
+            return license_info
+        else:
+            return {"error": f"License details not found: {result.stderr}"}
+
+    except Exception as e:
+        logger.error(f"Error getting license details: {e}")
         return {"error": str(e)}
 
 
@@ -474,6 +710,170 @@ async def analyze_commercial_risk(
 
 
 @mcp.tool()
+async def validate_license_list(
+    licenses: List[str],
+    distribution: str = "general",
+    check_app_store_compatibility: bool = False
+) -> Dict[str, Any]:
+    """Validate if a list of licenses is safe for a specific distribution type.
+
+    This tool analyzes a list of licenses without requiring a filesystem path,
+    making it ideal for quick "Can I ship this?" questions.
+
+    Args:
+        licenses: List of SPDX license identifiers (e.g., ["MIT", "Apache-2.0"])
+        distribution: Target distribution type - "mobile", "desktop", "saas", "embedded", "general"
+        check_app_store_compatibility: Check specific App Store (iOS/Android) compatibility
+
+    Returns:
+        Dictionary with:
+        - safe_for_distribution: bool - Overall safety assessment
+        - copyleft_risk: str - "none", "weak", or "strong"
+        - risk_level: str - "LOW", "MEDIUM", or "HIGH"
+        - violations: List of identified issues
+        - recommendations: List of actionable recommendations
+        - app_store_compatible: bool - iOS/Android app store compatibility
+        - license_details: Summary of each license
+    """
+    try:
+        logger.info(f"Validating {len(licenses)} licenses for {distribution} distribution")
+
+        result = {
+            "licenses_analyzed": licenses,
+            "distribution": distribution,
+            "safe_for_distribution": True,
+            "copyleft_risk": "none",
+            "risk_level": "LOW",
+            "violations": [],
+            "recommendations": [],
+            "app_store_compatible": True,
+            "license_details": {}
+        }
+
+        # Get detailed information for each license
+        strong_copyleft = []
+        weak_copyleft = []
+        permissive = []
+        unknown = []
+
+        for license_id in licenses:
+            # Get license details using existing tool
+            try:
+                details_result = await get_license_details(license_id, include_full_text=False)
+
+                if "error" in details_result:
+                    unknown.append(license_id)
+                    result["license_details"][license_id] = {"type": "unknown", "error": "Could not retrieve details"}
+                    continue
+
+                license_type = details_result.get("type", "unknown")
+                requirements = details_result.get("requirements", {})
+                same_license = requirements.get("same_license", False)
+                disclose_source = requirements.get("disclose_source", False)
+
+                result["license_details"][license_id] = {
+                    "type": license_type,
+                    "requires_same_license": same_license,
+                    "requires_source_disclosure": disclose_source
+                }
+
+                # Categorize license
+                if license_id in ["GPL-2.0", "GPL-2.0-only", "GPL-3.0", "GPL-3.0-only", "AGPL-3.0", "AGPL-3.0-only"]:
+                    strong_copyleft.append(license_id)
+                elif license_id in ["LGPL-2.1", "LGPL-3.0", "MPL-2.0", "EPL-1.0", "EPL-2.0"]:
+                    weak_copyleft.append(license_id)
+                elif license_type == "permissive" or license_id in ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]:
+                    permissive.append(license_id)
+                else:
+                    unknown.append(license_id)
+
+            except Exception as e:
+                logger.warning(f"Could not get details for {license_id}: {e}")
+                unknown.append(license_id)
+                result["license_details"][license_id] = {"type": "unknown", "error": str(e)}
+
+        # Assess copyleft risk
+        if strong_copyleft:
+            result["copyleft_risk"] = "strong"
+            result["risk_level"] = "HIGH"
+            result["safe_for_distribution"] = False
+
+            for lic in strong_copyleft:
+                result["violations"].append(f"{lic} is a strong copyleft license - requires source disclosure")
+
+            # Special handling for AGPL in SaaS
+            agpl_licenses = [l for l in strong_copyleft if "AGPL" in l]
+            if agpl_licenses and distribution == "saas":
+                result["violations"].append("AGPL detected for SaaS distribution - network copyleft trigger applies")
+                result["recommendations"].append("AGPL requires source disclosure even for SaaS/web services")
+
+        elif weak_copyleft:
+            result["copyleft_risk"] = "weak"
+            if distribution == "mobile":
+                result["risk_level"] = "MEDIUM"
+                result["safe_for_distribution"] = False
+                result["violations"].append("Weak copyleft licenses may require special handling for mobile")
+                result["recommendations"].append("LGPL/MPL may allow dynamic linking - verify linking method")
+            else:
+                result["risk_level"] = "LOW"
+                result["recommendations"].append("Weak copyleft licenses detected - review linking requirements")
+        else:
+            result["copyleft_risk"] = "none"
+            result["risk_level"] = "LOW"
+            result["safe_for_distribution"] = True
+
+        # App Store compatibility check
+        if check_app_store_compatibility or distribution == "mobile":
+            # GPL is incompatible with iOS App Store due to DRM restrictions
+            gpl_licenses = [l for l in licenses if "GPL" in l and "LGPL" not in l]
+            if gpl_licenses:
+                result["app_store_compatible"] = False
+                result["safe_for_distribution"] = False
+                result["violations"].append("GPL licenses conflict with App Store terms (DRM restrictions)")
+                result["recommendations"].append("Consider replacing GPL dependencies with LGPL or permissive alternatives")
+            else:
+                result["app_store_compatible"] = True
+                if weak_copyleft:
+                    result["recommendations"].append("LGPL/MPL allowed on App Store with proper attribution")
+
+        # Distribution-specific recommendations
+        if distribution == "mobile" and result["safe_for_distribution"]:
+            result["recommendations"].append("Include all license texts in app's legal notices screen")
+            result["recommendations"].append("Preserve copyright attributions in About/Credits section")
+
+        if distribution == "saas":
+            if not strong_copyleft:
+                result["recommendations"].append("No source disclosure required for SaaS distribution")
+            result["recommendations"].append("Include license notices in web UI footer or /licenses endpoint")
+
+        if distribution == "desktop":
+            result["recommendations"].append("Include LICENSE and NOTICE files in installation directory")
+            result["recommendations"].append("Preserve copyright notices in About dialog")
+
+        # Unknown licenses warning
+        if unknown:
+            result["violations"].append(f"Unknown or unrecognized licenses: {', '.join(unknown)}")
+            result["recommendations"].append("Manually review unknown licenses with legal counsel")
+            result["risk_level"] = "HIGH" if result["risk_level"] == "LOW" else result["risk_level"]
+
+        # Summary
+        total = len(licenses)
+        result["summary"] = {
+            "total_licenses": total,
+            "permissive": len(permissive),
+            "weak_copyleft": len(weak_copyleft),
+            "strong_copyleft": len(strong_copyleft),
+            "unknown": len(unknown)
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error validating license list: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
 async def generate_mobile_legal_notice(
     project_name: str,
     licenses: List[str],
@@ -551,15 +951,46 @@ async def generate_sbom(
 
 @mcp.resource("semcl://license_database")
 async def get_license_database() -> Dict[str, Any]:
-    """Get license compatibility database."""
+    """Get license compatibility database from ospac data directory."""
     try:
-        # Run ospac to get license database
-        result = _run_tool("ospac", ["list-licenses", "--json"])
-        if result.returncode == 0 and result.stdout:
-            return json.loads(result.stdout)
-        return {"error": "Failed to get license database"}
+        # List available licenses from ospac's data directory
+        from pathlib import Path
+        import os
+
+        # Try to find data directory - check common locations
+        data_dirs = [
+            Path("data/licenses/json"),
+            Path("data/licenses/spdx"),
+            Path.home() / ".ospac" / "data" / "licenses" / "json",
+        ]
+
+        licenses = {}
+        for data_dir in data_dirs:
+            if data_dir.exists():
+                for license_file in data_dir.glob("*.json"):
+                    try:
+                        with open(license_file) as f:
+                            license_data = json.load(f)
+                            license_id = license_file.stem
+                            licenses[license_id] = license_data.get("license", {})
+                    except Exception:
+                        continue
+
+                # If we found licenses, return them
+                if licenses:
+                    return {
+                        "licenses": licenses,
+                        "total": len(licenses),
+                        "source": str(data_dir.parent)
+                    }
+
+        return {
+            "error": "No license database found. Run 'ospac data generate' to create one.",
+            "licenses": {},
+            "total": 0
+        }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "licenses": {}, "total": 0}
 
 
 @mcp.resource("semcl://policy_templates")
