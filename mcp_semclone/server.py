@@ -197,17 +197,43 @@ Red flags in binary scan results:
 - High component count with low confidence → Needs deeper analysis
 
 TOOL SELECTION GUIDE:
-- scan_directory: Primary tool for analyzing projects/codebases. Use for comprehensive license inventory, optional package identification, and vulnerability assessment
-- scan_binary: Analyze compiled binaries, executables, and archives (APK, EXE, DLL, SO, JAR). Detects OSS components and licenses in binaries using BinarySniffer. Use for mobile apps, firmware, libraries, and binary distributions
-- check_package: Use when you have a specific package identifier (PURL, CPE, or file) to analyze. Checks both vulnerabilities and licenses for individual packages
-- validate_policy: Standalone license policy validation. Use when you already have license data and need to check compliance
-- validate_license_list: Quick validation of license list for distribution safety. Answers "Can I ship MIT+Apache to App Store?" without requiring filesystem
-- get_license_obligations: Get detailed compliance requirements for specific licenses. Answers "What must I do to comply?"
-- check_license_compatibility: Check if two licenses can be used together. Answers "Can I mix MIT with GPL?"
-- get_license_details: Get comprehensive information about a license including full text. Use for generating NOTICE files
-- analyze_commercial_risk: Specialized tool for commercial distribution risk assessment. Detects copyleft licenses and mixed licensing in data files
-- generate_mobile_legal_notice: Creates legal notices for mobile app distribution. Use after identifying licenses in dependencies
-- generate_sbom: Automatically calls scan_directory internally to generate Software Bill of Materials
+
+**For Package Archives (.jar, .whl, .rpm, .gem, .nupkg, .crate, etc.):**
+- check_package: RECOMMENDED for package archives. Intelligently uses upmex for metadata extraction + osslili for licenses. Fastest and most accurate for packages with structured metadata.
+
+**For Compiled Binaries (.so, .dll, .dylib, .exe, .bin, .apk, .ipa):**
+- scan_binary: Use for truly compiled binaries, firmware, and mobile apps. Uses BinarySniffer for signature-based component detection. Best for executables and native libraries.
+
+**For Source Code Directories:**
+- scan_directory: Primary tool for analyzing projects/codebases. Performs comprehensive license inventory with osslili, optional package identification, and vulnerability assessment.
+
+**Detailed Tool Descriptions:**
+- check_package: Intelligent package analyzer that automatically selects the best extraction method:
+  * For archives: Tries upmex first (fast, accurate metadata), falls back to osslili
+  * For PURLs: Direct package registry lookups
+  * Returns: Package metadata (name, version, PURL), licenses, optional vulnerabilities
+  * Use when: You have a package file (.jar, .whl, etc.) or PURL to analyze
+
+- scan_binary: Binary signature detection for compiled files using BinarySniffer:
+  * Detects OSS components embedded in binaries through signature matching
+  * Use for: Mobile apps (APK/IPA), executables (EXE), native libraries (SO/DLL/DYLIB), firmware
+  * Returns: Detected components, licenses, compatibility warnings, optional SBOM
+  * Note: Slower than check_package for archives; prefer check_package for .jar, .whl, etc.
+
+- scan_directory: Comprehensive source code analysis:
+  * License inventory via osslili (fast, thorough)
+  * Optional package identification via src2purl
+  * Optional vulnerability scanning (first 10 packages)
+  * Use for: Git repositories, source directories, projects with build files
+
+- validate_policy: Standalone license policy validation without filesystem access
+- validate_license_list: Quick distribution safety check (e.g., "Can I ship to App Store?")
+- get_license_obligations: Detailed compliance requirements for specific licenses
+- check_license_compatibility: Check if two licenses can be combined
+- get_license_details: Comprehensive license information including full text
+- analyze_commercial_risk: Commercial distribution risk assessment for copyleft detection
+- generate_mobile_legal_notice: Creates legal notices for mobile app compliance
+- generate_sbom: Generates Software Bill of Materials (calls scan_directory internally)
 
 PERFORMANCE CONSTRAINTS:
 1. Vulnerability scanning limited to first 10 packages to avoid timeouts
@@ -527,48 +553,138 @@ async def scan_directory(
 @mcp.tool()
 async def check_package(
     identifier: str,
-    check_vulnerabilities: bool = True,
+    check_vulnerabilities: bool = False,
     check_licenses: bool = True
 ) -> Dict[str, Any]:
-    """Check a specific package."""
-    result = {}
+    """Check a specific package using intelligent tool selection.
+
+    This tool intelligently analyzes package files by:
+    1. For archives (.jar, .whl, .rpm, .gem, etc.): Use upmex for metadata extraction
+    2. If upmex fails or for non-archives: Fall back to osslili for license detection
+    3. For PURLs: Use package registry APIs when available
+
+    Args:
+        identifier: Package identifier (PURL like pkg:maven/com.google.gson/gson@2.10.1,
+                   file path to archive, or package file)
+        check_vulnerabilities: Whether to check for vulnerabilities (default: False for speed)
+        check_licenses: Whether to extract license information (default: True)
+
+    Returns:
+        Dictionary containing package metadata, licenses, and optionally vulnerabilities
+    """
+    result = {
+        "identifier": identifier,
+        "purl": None,
+        "package_info": {},
+        "licenses": [],
+        "extraction_method": None
+    }
 
     try:
         # Determine identifier type
         if identifier.startswith("pkg:"):
-            # It's a PURL
+            # It's already a PURL
+            result["purl"] = identifier
             purl = identifier
         elif identifier.startswith("cpe:"):
-            # It's a CPE
+            # It's a CPE - limited support
             purl = None
+            result["extraction_method"] = "cpe"
         else:
-            # Try to identify as a file
-            src2purl_result = _run_tool("src2purl", [identifier])
-            if src2purl_result.returncode == 0 and src2purl_result.stdout:
-                package_info = json.loads(src2purl_result.stdout)
-                purl = package_info.get("purl")
+            # It's a file path - use intelligent detection
+            file_path = Path(identifier)
+            if not file_path.exists():
+                return {"error": f"File not found: {identifier}"}
+
+            # Check if it's a package archive
+            archive_extensions = {'.jar', '.war', '.ear', '.whl', '.egg', '.tar.gz', '.tgz',
+                                '.gem', '.nupkg', '.rpm', '.deb', '.apk', '.crate', '.conda'}
+
+            is_archive = any(str(file_path).endswith(ext) for ext in archive_extensions)
+
+            if is_archive:
+                # Try upmex first for package archives
+                logger.info(f"Detected archive file, attempting upmex extraction: {identifier}")
+                try:
+                    upmex_result = _run_tool("upmex", ["extract", identifier], timeout=60)
+                    if upmex_result.returncode == 0 and upmex_result.stdout:
+                        logger.info(f"upmex raw stdout length: {len(upmex_result.stdout)}")
+                        if not upmex_result.stdout.strip():
+                            logger.warning("upmex returned empty output")
+                            purl = None
+                        else:
+                            package_data = json.loads(upmex_result.stdout)
+                            result["package_info"] = package_data.get("package", {})
+                            result["purl"] = package_data.get("package", {}).get("purl")
+                            result["extraction_method"] = "upmex"
+                            purl = result["purl"]
+                            logger.info(f"Successfully extracted package metadata with upmex: {purl}")
+                    else:
+                        logger.warning(f"upmex failed: returncode={upmex_result.returncode}, stderr={upmex_result.stderr}")
+                        purl = None
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse upmex JSON output: {e}")
+                    logger.error(f"upmex stdout was: {upmex_result.stdout[:500] if upmex_result.stdout else 'None'}")
+                    purl = None
+                except Exception as e:
+                    logger.warning(f"upmex extraction error: {e}, falling back to osslili")
+                    purl = None
             else:
                 purl = None
 
-        # Check vulnerabilities
-        if check_vulnerabilities:
-            vulnq_args = [identifier, "--format", "json"]
-            vulnq_result = _run_tool("vulnq", vulnq_args)
-            if vulnq_result.returncode == 0 and vulnq_result.stdout:
-                vuln_data = json.loads(vulnq_result.stdout)
-                result["vulnerabilities"] = vuln_data
+        # Extract license information
+        if check_licenses:
+            if purl and result["extraction_method"] == "upmex":
+                # For upmex-extracted packages, also run osslili on the file for comprehensive license data
+                logger.info(f"Running osslili for comprehensive license detection on {identifier}")
 
-        # Check licenses
-        if check_licenses and purl:
-            purl2notices_args = ["-i", purl, "-f", "json"]
-            notices_result = _run_tool("purl2notices", purl2notices_args)
-            if notices_result.returncode == 0 and notices_result.stdout:
-                notices = json.loads(notices_result.stdout)
-                result["licenses"] = notices.get("licenses", [])
-                result["copyright"] = notices.get("copyright", "")
+            # Run osslili on the file/archive
+            if not identifier.startswith("pkg:") and not identifier.startswith("cpe:"):
+                try:
+                    osslili_result = _run_tool("osslili", [identifier, "-f", "cyclonedx-json"], timeout=60)
+                    logger.info(f"osslili return code: {osslili_result.returncode}, stdout length: {len(osslili_result.stdout)}, stderr length: {len(osslili_result.stderr)}")
 
-        result["identifier"] = identifier
-        result["purl"] = purl
+                    if osslili_result.returncode == 0 and osslili_result.stdout:
+                        try:
+                            # osslili may output informational messages before JSON, find the JSON start
+                            json_start = osslili_result.stdout.find('{')
+                            if json_start > 0:
+                                json_output = osslili_result.stdout[json_start:]
+                            else:
+                                json_output = osslili_result.stdout
+
+                            license_data = json.loads(json_output)
+                            # Extract licenses from CycloneDX format
+                            if "components" in license_data:
+                                for component in license_data.get("components", []):
+                                    if "licenses" in component:
+                                        for lic in component["licenses"]:
+                                            if "license" in lic and "id" in lic["license"]:
+                                                result["licenses"].append(lic["license"]["id"])
+                            elif "licenses" in license_data:
+                                result["licenses"] = license_data["licenses"]
+                            result["extraction_method"] = result.get("extraction_method", "osslili") or "upmex+osslili"
+                            logger.info(f"License extraction successful: {len(result['licenses'])} licenses found")
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Failed to parse osslili output: {e}")
+                            logger.warning(f"osslili stdout (first 500 chars): {osslili_result.stdout[:500]}")
+                    else:
+                        logger.warning(f"osslili failed with return code {osslili_result.returncode}")
+                        if osslili_result.stderr:
+                            logger.warning(f"osslili stderr (first 1000 chars): {osslili_result.stderr[:1000]}")
+                except Exception as e:
+                    logger.warning(f"osslili execution failed: {e}, skipping license extraction")
+
+        # Check vulnerabilities if requested
+        if check_vulnerabilities and result["purl"]:
+            try:
+                vulnq_result = _run_tool("vulnq", [result["purl"], "--format", "json"], timeout=30)
+                if vulnq_result.returncode == 0 and vulnq_result.stdout:
+                    vuln_data = json.loads(vulnq_result.stdout)
+                    result["vulnerabilities"] = vuln_data
+            except Exception as e:
+                logger.warning(f"Vulnerability check failed: {e}")
+                result["vulnerabilities"] = {"error": str(e)}
 
     except Exception as e:
         logger.error(f"Error checking package: {e}")

@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
 import argparse
 
 try:
@@ -87,6 +88,7 @@ class StrandsComplianceAgent:
 
         print("✅ Agent initialized")
 
+    @asynccontextmanager
     async def connect_mcp(self):
         """Connect to MCP server and discover tools."""
         print("\n🔌 Connecting to MCP server...")
@@ -250,17 +252,27 @@ Be concise but thorough. Focus on compliance risks and remediation steps."""
         # Step 1: LLM decides on analysis strategy
         planning_query = f"""I need to analyze this path for OSS compliance: {path}
 
+FILE TYPE RECOGNITION:
+- **Package Archives** (.jar, .war, .ear, .whl, .tar.gz, .tgz, .gem, .nupkg, .crate, .conda)
+  → Use check_package (extracts metadata with upmex + licenses with osslili)
+
+- **Compiled Binaries** (.so, .dll, .dylib, .exe, .bin, ELF binaries, .apk, .ipa)
+  → Use scan_binary (signature detection with binarysniffer)
+
+- **Source Directories** (folders with source code, build files)
+  → Use scan_directory (license inventory + package identification)
+
 Based on the path, determine:
-1. Is this likely a binary file or source code directory?
-2. Which MCP tool(s) should I use?
+1. What type of file/path is this? (package_archive|compiled_binary|source_directory)
+2. Which MCP tool should I use?
 3. What analysis parameters are appropriate?
 
 Respond with a JSON object:
 {{
-  "file_type": "binary|directory|unknown",
-  "recommended_tool": "tool_name",
+  "file_type": "package_archive|compiled_binary|source_directory|unknown",
+  "recommended_tool": "check_package|scan_binary|scan_directory",
   "analysis_mode": "fast|standard|deep",
-  "reasoning": "brief explanation"
+  "reasoning": "brief explanation with file extension recognition"
 }}"""
 
         plan_response = await self.query_llm(planning_query)
@@ -296,13 +308,20 @@ Respond with a JSON object:
 
         # Step 2: Execute chosen tool
         tool_name = plan['recommended_tool']
-        arguments = {"path": path}
+        arguments = {}
 
-        if tool_name == "scan_binary":
+        if tool_name == "check_package":
+            # For package files, use identifier (path to the package file)
+            arguments["identifier"] = path
+            arguments["check_licenses"] = True
+            arguments["check_vulnerabilities"] = False  # Skip vuln check for speed
+        elif tool_name == "scan_binary":
+            arguments["path"] = path
             arguments["analysis_mode"] = plan.get('analysis_mode', 'standard')
             arguments["check_licenses"] = True
             arguments["check_compatibility"] = True
         elif tool_name == "scan_directory":
+            arguments["path"] = path
             arguments["inventory_licenses"] = True
             arguments["identify_packages"] = True
 
