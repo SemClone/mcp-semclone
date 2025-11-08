@@ -341,70 +341,6 @@ Format your response in clear sections with risk indicators (✅/⚠️/❌)."""
 
         return report
 
-    async def interactive_mode(self, session: ClientSession):
-        """Run agent in interactive mode."""
-        print("\n" + "="*80)
-        print("🤖 STRANDS COMPLIANCE AGENT - Interactive Mode")
-        print("="*80)
-        print("\nCommands:")
-        print("  analyze <path>     - Analyze a file or directory")
-        print("  tools              - List available MCP tools")
-        print("  history            - Show conversation history")
-        print("  clear              - Clear conversation history")
-        print("  help               - Show this help")
-        print("  quit               - Exit interactive mode")
-        print("\nOr just ask questions about OSS compliance!\n")
-
-        while True:
-            try:
-                user_input = input("You: ").strip()
-
-                if not user_input:
-                    continue
-
-                if user_input.lower() in ['quit', 'exit', 'q']:
-                    print("👋 Goodbye!")
-                    break
-
-                elif user_input.lower() == 'help':
-                    print("\nAvailable commands: analyze, tools, history, clear, help, quit")
-                    continue
-
-                elif user_input.lower() == 'tools':
-                    print(f"\n📦 Available MCP Tools ({len(self.available_tools)}):")
-                    for tool in self.available_tools:
-                        print(f"\n{tool['name']}:")
-                        print(f"  {tool['description']}")
-                    continue
-
-                elif user_input.lower() == 'history':
-                    print(f"\n📜 Conversation History ({len(self.conversation_history)} messages):")
-                    for i, msg in enumerate(self.conversation_history):
-                        role = "You" if msg['role'] == 'user' else "Agent"
-                        content = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
-                        print(f"{i+1}. {role}: {content}")
-                    continue
-
-                elif user_input.lower() == 'clear':
-                    self.conversation_history = []
-                    print("✅ Conversation history cleared")
-                    continue
-
-                elif user_input.lower().startswith('analyze '):
-                    path = user_input[8:].strip()
-                    await self.analyze_path(session, path)
-                    continue
-
-                else:
-                    # General query
-                    response = await self.query_llm(user_input)
-                    print(f"\nAgent: {response}\n")
-
-            except KeyboardInterrupt:
-                print("\n👋 Goodbye!")
-                break
-            except Exception as e:
-                print(f"❌ Error: {e}")
 
 
 async def main():
@@ -415,14 +351,8 @@ async def main():
     )
 
     parser.add_argument(
-        "command",
-        choices=["analyze", "interactive"],
-        help="Command to run"
-    )
-    parser.add_argument(
         "path",
-        nargs="?",
-        help="Path to analyze (required for 'analyze' command)"
+        help="Path to analyze"
     )
     parser.add_argument(
         "--model",
@@ -437,9 +367,6 @@ async def main():
 
     args = parser.parse_args()
 
-    if args.command == "analyze" and not args.path:
-        parser.error("'analyze' command requires a path argument")
-
     # Create configuration
     config = AgentConfig(
         llm_model=args.model,
@@ -450,12 +377,9 @@ async def main():
     agent = StrandsComplianceAgent(config)
     await agent.initialize()
 
-    # Connect to MCP server and run command
+    # Connect to MCP server and analyze path
     async with agent.connect_mcp() as session:
-        if args.command == "analyze":
-            await agent.analyze_path(session, args.path)
-        elif args.command == "interactive":
-            await agent.interactive_mode(session)
+        await agent.analyze_path(session, args.path)
 
 
 if __name__ == "__main__":

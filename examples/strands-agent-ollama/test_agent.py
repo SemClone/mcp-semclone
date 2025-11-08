@@ -127,7 +127,7 @@ def main():
     if checks_passed == total_checks:
         print("\n✅ All checks passed! Ready to run the agent.")
         print("\nQuick start:")
-        print("  python agent.py interactive")
+        print("  python agent.py /path/to/project")
         return 0
     else:
         print(f"\n⚠️  {total_checks - checks_passed} check(s) failed.")
