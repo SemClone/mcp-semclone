@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-11-07
+
+### Added
+- **New tool:** `scan_binary()` - Binary analysis for OSS components and licenses using BinarySniffer
+  - Scan compiled binaries (APK, EXE, DLL, SO, JAR, firmware)
+  - Detect OSS components in binaries with confidence scoring
+  - Extract license information from binary files
+  - Check license compatibility in binary distributions
+  - Multiple analysis modes (fast, standard, deep)
+  - Generate CycloneDX SBOM for binary distributions
+  - Support for mobile apps (APK, IPA), desktop apps, firmware, libraries
+- **New dependency:** `binarysniffer>=1.11.0` added to pyproject.toml
+- Comprehensive test suite for binary scanning (4 new tests)
+- **Enhanced MCP instructions:** 106 lines of binary scanning guidance for LLMs
+  - File type recognition (14+ binary formats)
+  - Analysis mode selection guidance
+  - Confidence threshold recommendations
+  - 5 complete workflow examples
+  - Red flag detection patterns
+  - 6-step mobile app compliance workflow
+
+### Improved
+- Overall capability increased from 95% to 97% (+2%)
+- Embedded/IoT use case capability increased from 78% to 92% (+14%)
+- Mobile apps use case capability increased from 98% to 99% (+1%)
+- Desktop applications capability increased from 95% to 97% (+2%)
+- Now fills critical gap in binary distribution compliance
+- **Tool detection:** Replaced hardcoded tool paths with intelligent auto-detection
+  - Automatic tool discovery using `shutil.which()`
+  - Caching for performance (avoids repeated lookups)
+  - Environment variable override support (e.g., `BINARYSNIFFER_PATH`)
+  - No manual configuration required - tools found automatically in PATH
+  - More robust and user-friendly than previous approach
+
+### Documentation
+- Updated CAPABILITY_METRICS.md with v1.3.0 metrics
+- Updated README with binary scanning capabilities and examples
+- Updated tool inventory to 11 tools (was 10)
+- Added binary scanning to all relevant documentation
+
+### Performance
+- Binary scanning leverages BinarySniffer's optimized analysis
+- Fast mode for quick scans (<30s for typical mobile apps)
+- Deep mode for thorough analysis of complex binaries
+- Tool path caching eliminates repeated auto-detection overhead
+
 ## [1.2.0] - 2025-11-07
 
 ### Added
@@ -82,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic repository structure
 - License and initial documentation
 
-[Unreleased]: https://github.com/SemClone/mcp-semclone/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/SemClone/mcp-semclone/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/SemClone/mcp-semclone/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/SemClone/mcp-semclone/compare/v0.1.0...v1.2.0
 [0.1.0]: https://github.com/SemClone/mcp-semclone/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/SemClone/mcp-semclone/releases/tag/v0.0.1

@@ -4,6 +4,7 @@
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -88,8 +89,116 @@ When analyzing license obligations and requirements, use these OSPAC fields to d
    - type="copyleft_strong" + network_use_disclosure=false → Avoid: mobile apps; OK: SaaS if no distribution
    - type="copyleft_strong" + network_use_disclosure=true → Avoid: SaaS, mobile; Requires: source publication
 
+BINARY SCANNING GUIDANCE (scan_binary tool):
+
+When to use scan_binary vs scan_directory:
+- Use scan_binary for: APK, IPA, EXE, DLL, SO, DYLIB, JAR, WAR, EAR, firmware images, compiled binaries
+- Use scan_directory for: Source code repositories, projects with build files, uncompiled code
+- Use BOTH when: You have both source and compiled artifacts (scan separately, compare results)
+
+File type recognition (when to use scan_binary):
+- Mobile apps: .apk (Android), .ipa (iOS), .aab (Android App Bundle)
+- Desktop executables: .exe (Windows), ELF binaries (Linux, no extension), .app bundles (macOS)
+- Libraries: .dll (Windows), .so (Linux), .dylib (macOS), .a (static libs)
+- Java/JVM: .jar, .war, .ear, .class files
+- Firmware: .bin, .img, .hex, embedded system images
+- Archives containing binaries: .zip, .tar.gz with binaries inside
+- When user mentions: "compiled", "binary", "executable", "firmware", "APK", "mobile app binary"
+
+Analysis mode selection:
+- analysis_mode="fast": Use for initial scans, large files (>100MB), time-sensitive queries
+  * Skips fuzzy matching, faster but may miss some components
+  * Good for: Quick checks, CI/CD pipelines, preliminary assessments
+- analysis_mode="standard" (default): Use for most cases, balanced speed/accuracy
+  * Comprehensive signature matching, reasonable performance
+  * Good for: General compliance checks, regular assessments
+- analysis_mode="deep": Use for critical assessments, detailed analysis, legal compliance
+  * Thorough analysis, slower but most accurate
+  * Good for: Pre-release compliance, legal reviews, embedded systems
+
+Confidence threshold guidance:
+- confidence_threshold=0.3-0.5: Use for discovery mode (find all possible components)
+- confidence_threshold=0.5-0.7 (default 0.5): Balanced, good for most use cases
+- confidence_threshold=0.7-0.9: High confidence only, reduce false positives
+- Lower threshold for firmware/embedded (components may be modified)
+- Higher threshold for well-known libraries (expect exact matches)
+
+When to enable specific options:
+- check_licenses=True (default): Always use unless only interested in components
+- check_compatibility=True: Use for commercial products, mobile apps, mixed licensing scenarios
+- generate_sbom=True: Use for compliance documentation, supply chain requirements, distribution
+
+Interpreting binary scan results:
+1. Check result["summary"]["total_components"] - number of OSS components detected
+2. Review result["licenses"] - all licenses found in the binary
+3. If check_compatibility=True: Review result["compatibility_warnings"] for conflicts
+4. Examine result["components"] for details on each detected component
+5. Compare with source code scan if available (should match or be subset)
+
+Common binary scanning workflows:
+
+1. Mobile app pre-release check:
+   scan_binary(
+       path="app.apk",
+       analysis_mode="deep",
+       check_compatibility=True  # Detect GPL/App Store conflicts
+   )
+   → Review licenses for App Store compatibility
+   → Use validate_license_list() with distribution="mobile" for verification
+   → Generate legal notices with licenses found
+
+2. Firmware compliance assessment:
+   scan_binary(
+       path="firmware.bin",
+       analysis_mode="deep",
+       confidence_threshold=0.4,  # Firmware components may be modified
+       generate_sbom=True
+   )
+   → Extract all component licenses
+   → Check for copyleft licenses (GPL in firmware = must provide source)
+   → Generate NOTICE file for distribution
+
+3. Desktop application check:
+   scan_binary(
+       path="application.exe",
+       analysis_mode="standard",
+       check_licenses=True,
+       check_compatibility=True
+   )
+   → Identify all bundled libraries
+   → Check for license conflicts
+   → Validate against commercial distribution policy
+
+4. Java/JVM application:
+   scan_binary(
+       path="application.jar",
+       analysis_mode="standard",
+       generate_sbom=True
+   )
+   → Detect bundled dependencies (even if not in manifest)
+   → Generate SBOM for supply chain
+   → Check for known vulnerabilities in detected components
+
+5. Third-party library verification:
+   scan_binary(
+       path="vendor_library.so",
+       analysis_mode="deep",
+       confidence_threshold=0.7  # High confidence for verification
+   )
+   → Verify vendor license claims
+   → Detect undisclosed OSS components
+   → Check for license compliance issues
+
+Red flags in binary scan results:
+- GPL licenses in mobile apps → App Store rejection risk
+- AGPL licenses in SaaS binaries → Must disclose source for network use
+- Multiple incompatible copyleft licenses → Legal conflict
+- Undisclosed components (not in vendor docs) → Compliance risk
+- High component count with low confidence → Needs deeper analysis
+
 TOOL SELECTION GUIDE:
 - scan_directory: Primary tool for analyzing projects/codebases. Use for comprehensive license inventory, optional package identification, and vulnerability assessment
+- scan_binary: Analyze compiled binaries, executables, and archives (APK, EXE, DLL, SO, JAR). Detects OSS components and licenses in binaries using BinarySniffer. Use for mobile apps, firmware, libraries, and binary distributions
 - check_package: Use when you have a specific package identifier (PURL, CPE, or file) to analyze. Checks both vulnerabilities and licenses for individual packages
 - validate_policy: Standalone license policy validation. Use when you already have license data and need to check compliance
 - validate_license_list: Quick validation of license list for distribution safety. Answers "Can I ship MIT+Apache to App Store?" without requiring filesystem
@@ -113,11 +222,28 @@ INPUT FORMAT REQUIREMENTS:
 - Policy files: JSON or YAML format policy definitions for ospac tool
 
 COMMON WORKFLOWS:
+
+Source Code Workflows:
 1. Basic compliance check: scan_directory(path, check_licenses=True, identify_packages=False)
 2. Full security assessment: scan_directory(path, check_vulnerabilities=True) - automatically enables package identification
 3. Policy validation: scan_directory(path, policy_file="policy.json") → validate_policy(licenses, policy_file)
 4. Commercial risk analysis: analyze_commercial_risk(path) for mobile/commercial distribution decisions
 5. SBOM generation: generate_sbom(path, format="spdx") for supply chain transparency
+
+Binary Workflows:
+6. Mobile app compliance: scan_binary("app.apk", analysis_mode="deep", check_compatibility=True) → validate_license_list(licenses, distribution="mobile")
+7. Firmware assessment: scan_binary("firmware.bin", analysis_mode="deep", generate_sbom=True) → check copyleft presence
+8. Desktop app check: scan_binary("app.exe") → get_license_obligations(licenses) → generate_mobile_legal_notice(licenses)
+9. Library verification: scan_binary("library.so", confidence_threshold=0.7) → compare with vendor claims
+10. Combined analysis: scan_directory("src/") + scan_binary("build/app.apk") → compare results, ensure completeness
+
+Complete Mobile App Compliance Workflow:
+Step 1: scan_binary("app.apk", analysis_mode="deep", check_compatibility=True)
+Step 2: Extract licenses from result["licenses"]
+Step 3: validate_license_list(licenses, distribution="mobile", check_app_store_compatibility=True)
+Step 4: If violations: get_license_obligations(problematic_licenses) to understand requirements
+Step 5: If compatible: generate_mobile_legal_notice(licenses) for in-app display
+Step 6: generate_sbom=True to document components for compliance records
 
 RESOURCE ACCESS:
 - semcl://license_database: Retrieves comprehensive license compatibility database from ospac
@@ -129,23 +255,69 @@ ERROR HANDLING:
 - Missing CLI tools (src2purl, osslili, vulnq, ospac) will raise FileNotFoundError"""
 )
 
-# Global tool paths configuration
-tool_paths = {
-    "src2purl": os.environ.get("SRC2PURL_PATH", "src2purl"),
-    "osslili": os.environ.get("OSSLILI_PATH", "osslili"),
-    "vulnq": os.environ.get("VULNQ_PATH", "vulnq"),
-    "ospac": os.environ.get("OSPAC_PATH", "ospac"),
-    "purl2notices": os.environ.get("PURL2NOTICES_PATH", "purl2notices"),
-    "upmex": os.environ.get("UPMEX_PATH", "upmex")
-}
-logger.debug(f"Tool paths configured: {tool_paths}")
+# Tool auto-detection cache to avoid repeated lookups
+_tool_cache: Dict[str, str] = {}
+
+
+def _find_tool(tool_name: str) -> str:
+    """Auto-detect tool location with caching.
+
+    Detection order:
+    1. Check cache for previous successful lookup
+    2. Check environment variable (e.g., OSSLILI_PATH for osslili)
+    3. Use shutil.which() to find tool in PATH
+    4. Fall back to tool name itself (will fail if not found)
+
+    Args:
+        tool_name: Name of the tool (e.g., 'osslili', 'binarysniffer')
+
+    Returns:
+        Path to the tool executable
+    """
+    # Check cache first
+    if tool_name in _tool_cache:
+        return _tool_cache[tool_name]
+
+    # Check environment variable (e.g., OSSLILI_PATH)
+    env_var_name = f"{tool_name.upper()}_PATH"
+    env_path = os.environ.get(env_var_name)
+    if env_path:
+        logger.debug(f"Found {tool_name} via environment variable {env_var_name}: {env_path}")
+        _tool_cache[tool_name] = env_path
+        return env_path
+
+    # Auto-detect using shutil.which()
+    detected_path = shutil.which(tool_name)
+    if detected_path:
+        logger.debug(f"Auto-detected {tool_name} at: {detected_path}")
+        _tool_cache[tool_name] = detected_path
+        return detected_path
+
+    # Fall back to tool name (will fail if not in PATH)
+    logger.debug(f"Tool {tool_name} not found via environment or PATH, using bare name")
+    _tool_cache[tool_name] = tool_name
+    return tool_name
 
 
 def _run_tool(tool_name: str, args: List[str],
-              input_data: Optional[str] = None) -> subprocess.CompletedProcess:
-    """Run a SEMCL.ONE tool with error handling."""
+              input_data: Optional[str] = None, timeout: int = 120) -> subprocess.CompletedProcess:
+    """Run a SEMCL.ONE tool with error handling and auto-detection.
+
+    Args:
+        tool_name: Name of the tool (e.g., 'osslili', 'binarysniffer')
+        args: Command-line arguments for the tool
+        input_data: Optional stdin data to pass to the tool
+        timeout: Timeout in seconds (default: 120)
+
+    Returns:
+        CompletedProcess with stdout, stderr, and returncode
+
+    Raises:
+        FileNotFoundError: If tool cannot be found
+        subprocess.TimeoutExpired: If tool execution exceeds timeout
+    """
     try:
-        tool_path = tool_paths.get(tool_name, tool_name)
+        tool_path = _find_tool(tool_name)
         cmd = [tool_path] + args
         logger.debug(f"Running command: {' '.join(cmd)}")
 
@@ -154,7 +326,7 @@ def _run_tool(tool_name: str, args: List[str],
             input=input_data,
             capture_output=True,
             text=True,
-            timeout=120  # 120 second timeout for slower tools like src2purl
+            timeout=timeout
         )
 
         if result.returncode != 0:
@@ -992,6 +1164,175 @@ async def generate_sbom(
 
     except Exception as e:
         logger.error(f"Error generating SBOM: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def scan_binary(
+    path: str,
+    analysis_mode: str = "standard",
+    generate_sbom: bool = False,
+    check_licenses: bool = True,
+    check_compatibility: bool = False,
+    confidence_threshold: float = 0.5,
+    output_format: str = "json"
+) -> Dict[str, Any]:
+    """Scan binary files for OSS components and licenses using BinarySniffer.
+
+    This tool analyzes compiled binaries, executables, libraries, and archives
+    (APK, EXE, DLL, SO, JAR, etc.) to detect open source components, extract
+    license information, and identify security issues.
+
+    Use this tool when:
+    - Analyzing mobile apps (APK, IPA)
+    - Scanning executables (EXE, ELF binaries)
+    - Examining shared libraries (DLL, SO, DYLIB)
+    - Analyzing Java archives (JAR, WAR, EAR)
+    - Scanning firmware or embedded binaries
+    - Generating SBOM for binary distributions
+
+    Args:
+        path: Path to binary file or directory to analyze
+        analysis_mode: Analysis depth - "fast" (quick scan), "standard" (balanced),
+                      or "deep" (thorough analysis, slower)
+        generate_sbom: If True, generate SBOM in CycloneDX format
+        check_licenses: If True, perform detailed license analysis
+        check_compatibility: If True, check license compatibility and show warnings
+        confidence_threshold: Minimum confidence level (0.0-1.0) for component detection
+        output_format: Output format - "json", "table", "csv" (default: json)
+
+    Returns:
+        Dictionary containing:
+        - components: List of detected OSS components with licenses
+        - licenses: Summary of all licenses found
+        - compatibility_warnings: License compatibility issues (if check_compatibility=True)
+        - sbom: CycloneDX SBOM (if generate_sbom=True)
+        - metadata: Scan statistics and file information
+
+    Examples:
+        # Scan an Android APK
+        scan_binary("app.apk")
+
+        # Deep analysis with SBOM generation
+        scan_binary("firmware.bin", analysis_mode="deep", generate_sbom=True)
+
+        # Check license compatibility
+        scan_binary("library.so", check_compatibility=True)
+    """
+    try:
+        file_path = Path(path)
+        if not file_path.exists():
+            return {"error": f"Path does not exist: {path}"}
+
+        result = {
+            "components": [],
+            "licenses": [],
+            "compatibility_warnings": [],
+            "metadata": {
+                "path": str(file_path),
+                "analysis_mode": analysis_mode,
+                "confidence_threshold": confidence_threshold
+            }
+        }
+
+        # Build binarysniffer command
+        if check_licenses:
+            # Use dedicated license command for license-focused analysis
+            cmd = ["binarysniffer", "license", str(file_path)]
+
+            if check_compatibility:
+                cmd.append("--check-compatibility")
+
+            cmd.extend(["--show-files", "-o", "-", "-f", "json"])
+
+            # Execute license analysis
+            license_result = _run_tool("binarysniffer", cmd[1:], timeout=300)
+
+            if license_result.returncode == 0 and license_result.stdout:
+                license_data = json.loads(license_result.stdout)
+                result["licenses"] = license_data.get("licenses", [])
+                result["compatibility_warnings"] = license_data.get("compatibility_warnings", [])
+                result["metadata"]["license_count"] = len(result["licenses"])
+
+        # Perform component analysis
+        analyze_cmd = ["analyze", str(file_path)]
+
+        # Add analysis mode flags
+        if analysis_mode == "fast":
+            analyze_cmd.append("--fast")
+        elif analysis_mode == "deep":
+            analyze_cmd.append("--deep")
+
+        # Set confidence threshold
+        analyze_cmd.extend(["-t", str(confidence_threshold)])
+
+        # Generate SBOM if requested
+        if generate_sbom:
+            analyze_cmd.extend(["-f", "cyclonedx"])
+        else:
+            analyze_cmd.extend(["-f", "json"])
+
+        # Add output to stdout
+        analyze_cmd.extend(["-o", "-"])
+
+        # Add license focus if enabled
+        if check_licenses:
+            analyze_cmd.append("--license-focus")
+
+        # Execute analysis
+        analyze_result = _run_tool("binarysniffer", analyze_cmd, timeout=300)
+
+        if analyze_result.returncode == 0 and analyze_result.stdout:
+            analysis_data = json.loads(analyze_result.stdout)
+
+            if generate_sbom:
+                # SBOM format
+                result["sbom"] = analysis_data
+                result["metadata"]["sbom_format"] = "CycloneDX"
+
+                # Extract components from SBOM
+                if "components" in analysis_data:
+                    result["components"] = analysis_data["components"]
+                    result["metadata"]["component_count"] = len(result["components"])
+            else:
+                # Standard JSON format
+                result["components"] = analysis_data.get("components", analysis_data.get("results", []))
+                result["metadata"]["component_count"] = len(result["components"])
+
+                # Aggregate licenses from components if not already done
+                if not check_licenses and result["components"]:
+                    license_set = set()
+                    for component in result["components"]:
+                        if "license" in component:
+                            license_set.add(component["license"])
+                        if "licenses" in component:
+                            license_set.update(component["licenses"])
+
+                    result["licenses"] = [{"spdx_id": lic} for lic in license_set]
+                    result["metadata"]["license_count"] = len(result["licenses"])
+
+        # Add summary
+        result["summary"] = {
+            "total_components": result["metadata"].get("component_count", 0),
+            "total_licenses": result["metadata"].get("license_count", 0),
+            "has_compatibility_warnings": len(result["compatibility_warnings"]) > 0,
+            "sbom_generated": generate_sbom
+        }
+
+        return result
+
+    except FileNotFoundError:
+        return {
+            "error": "BinarySniffer not found. Please install it: pip install binarysniffer",
+            "install_instructions": "https://github.com/SemClone/binarysniffer"
+        }
+    except json.JSONDecodeError as e:
+        return {
+            "error": f"Failed to parse BinarySniffer output: {e}",
+            "raw_output": analyze_result.stdout if 'analyze_result' in locals() else None
+        }
+    except Exception as e:
+        logger.error(f"Error scanning binary: {e}")
         return {"error": str(e)}
 
 

@@ -294,6 +294,99 @@ class TestMCPServer:
                 result = await server_module.generate_sbom("/test")
                 assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_scan_binary_success(self):
+        """Test successful binary scan."""
+        with patch("mcp_semclone.server._run_tool") as mock_run:
+            # Mock binarysniffer license output
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=json.dumps({
+                    "licenses": [
+                        {"spdx_id": "Apache-2.0", "file": "lib/library.so"},
+                        {"spdx_id": "MIT", "file": "lib/utils.so"}
+                    ],
+                    "compatibility_warnings": []
+                })
+            )
+
+            with patch("pathlib.Path.exists", return_value=True):
+                result = await server_module.scan_binary("/test/app.apk")
+
+            assert "licenses" in result
+            assert "components" in result
+            assert "metadata" in result
+            assert result["metadata"]["path"] == "/test/app.apk"
+
+    @pytest.mark.asyncio
+    async def test_scan_binary_with_sbom(self):
+        """Test binary scan with SBOM generation."""
+        with patch("mcp_semclone.server._run_tool") as mock_run:
+            # Mock binarysniffer analyze output with CycloneDX SBOM
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=json.dumps({
+                    "bomFormat": "CycloneDX",
+                    "specVersion": "1.4",
+                    "components": [
+                        {
+                            "name": "openssl",
+                            "version": "1.1.1",
+                            "licenses": [{"license": {"id": "Apache-2.0"}}]
+                        }
+                    ]
+                })
+            )
+
+            with patch("pathlib.Path.exists", return_value=True):
+                result = await server_module.scan_binary(
+                    "/test/app.apk",
+                    generate_sbom=True
+                )
+
+            assert "sbom" in result
+            assert "metadata" in result
+            assert result["metadata"].get("sbom_format") == "CycloneDX"
+
+    @pytest.mark.asyncio
+    async def test_scan_binary_nonexistent(self):
+        """Test scanning non-existent binary."""
+        with patch("pathlib.Path.exists", return_value=False):
+            result = await server_module.scan_binary("/nonexistent/binary.apk")
+            assert "error" in result
+            assert "does not exist" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_scan_binary_with_compatibility_check(self):
+        """Test binary scan with license compatibility checking."""
+        with patch("mcp_semclone.server._run_tool") as mock_run:
+            # Mock binarysniffer license output with compatibility warnings
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=json.dumps({
+                    "licenses": [
+                        {"spdx_id": "GPL-2.0", "file": "lib/gpl.so"},
+                        {"spdx_id": "MIT", "file": "lib/mit.so"}
+                    ],
+                    "compatibility_warnings": [
+                        {
+                            "severity": "high",
+                            "message": "GPL-2.0 may be incompatible with proprietary code"
+                        }
+                    ]
+                })
+            )
+
+            with patch("pathlib.Path.exists", return_value=True):
+                result = await server_module.scan_binary(
+                    "/test/app.apk",
+                    check_compatibility=True
+                )
+
+            assert "compatibility_warnings" in result
+            assert len(result["compatibility_warnings"]) == 1
+            assert result["summary"]["has_compatibility_warnings"] is True
+
 
 class TestScanResult:
     """Test cases for ScanResult model."""
