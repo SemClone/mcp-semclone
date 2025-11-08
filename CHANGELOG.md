@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2025-11-08
+
+### Added
+- **New Example:** Strands Agent with Ollama - Autonomous OSS compliance agent
+  - Complete autonomous agent demonstrating MCP integration with local LLMs
+  - 2,784 lines across 9 files (agent.py, comprehensive documentation)
+  - Interactive and batch analysis modes
+  - Autonomous decision-making loop (plan → execute → interpret → report)
+  - Local LLM inference via Ollama (llama3, gemma3, deepseek-r1 support)
+  - Custom policy enforcement and configuration management
+  - Production-ready error handling and retry logic
+  - Complete data privacy (no external API dependencies)
+  - Comprehensive documentation:
+    - README.md (518 lines) - Complete usage guide with 3 workflows
+    - TUNING.md (1,008 lines) - Model selection, optimization, advanced scenarios
+    - OVERVIEW.md (445 lines) - Architecture and quick reference
+  - One-command setup with quickstart.sh script
+  - Environment validation with test_agent.py
+  - Example policy and configuration templates
+  - Use cases: Mobile app compliance, embedded/IoT, CI/CD, interactive queries
+
+### Changed
+- **Updated all SEMCL.ONE tool dependencies to latest versions:**
+  - osslili: 1.0.0 → 1.5.7 (improved license detection, TLSH fuzzy matching)
+  - binarysniffer: 1.11.0 → 1.11.3 (latest binary analysis features)
+  - src2purl: 1.0.0 → 1.3.4 (enhanced package identification, fuzzy matching)
+  - purl2notices: 1.0.0 → 1.2.7 (better legal notice generation, fixed dependencies)
+  - ospac: 1.0.0 → 1.2.2 (updated policy engine, more license rules)
+  - vulnq: 1.0.0 → 1.0.2 (latest vulnerability data sources)
+  - upmex: 1.0.0 → 1.6.7 (improved metadata extraction, more ecosystems)
+- Updated README with Examples section featuring Strands Agent
+
+### Benefits
+- Users automatically get latest tool features and bug fixes
+- Demonstrates production-ready autonomous agent patterns with MCP
+- Shows how to build fully local, private compliance systems
+- Provides comprehensive tuning guide for different use cases
+
 ## [1.3.0] - 2025-11-07
 
 ### Added
