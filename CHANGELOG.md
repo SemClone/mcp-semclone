@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2025-11-08
+
+### Changed
+- **Improved Package Archive Handling:** Enhanced check_package tool with intelligent tool selection
+  - Automatic detection of package archives (.jar, .whl, .rpm, .gem, .nupkg, .crate, .conda)
+  - Smart workflow: upmex for metadata extraction → osslili for license detection
+  - Better error handling and graceful fallbacks
+  - Handles osslili informational output correctly (strips messages before JSON parsing)
+- **Updated Tool Selection Documentation:** Added comprehensive guide for choosing between:
+  - check_package: For package archives (uses upmex + osslili)
+  - scan_binary: For compiled binaries (uses BinarySniffer)
+  - scan_directory: For source code directories (uses osslili + src2purl)
+- **Enhanced Strands Agent:** Improved file type recognition in planning prompts
+  - Better distinction between package archives, compiled binaries, and source directories
+  - More accurate tool selection based on file extensions
+
+### Fixed
+- JSON parsing error in check_package when osslili outputs informational messages
+- Async context manager decorator in Strands Agent examples
+
+### Benefits
+- More accurate package analysis with proper tool selection
+- Better license detection for package archives
+- Clearer documentation for tool usage
+- Improved agent autonomy with better file type recognition
+
 ## [1.3.1] - 2025-11-08
 
 ### Added
