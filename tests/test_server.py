@@ -204,22 +204,46 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_get_license_database(self):
         """Test getting license database."""
-        with patch("mcp_semclone.server._run_tool") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({
-                    "licenses": [
-                        {"id": "MIT", "name": "MIT License", "osi_approved": True},
-                        {"id": "Apache-2.0", "name": "Apache License 2.0", "osi_approved": True}
-                    ]
-                })
-            )
+        from pathlib import Path
+
+        # Mock filesystem access for license database
+        mock_license_files = [
+            MagicMock(stem="MIT"),
+            MagicMock(stem="Apache-2.0")
+        ]
+
+        mock_license_data = {
+            "MIT": {"license": {"id": "MIT", "name": "MIT License", "osi_approved": True}},
+            "Apache-2.0": {"license": {"id": "Apache-2.0", "name": "Apache License 2.0", "osi_approved": True}}
+        }
+
+        with patch("pathlib.Path.exists") as mock_exists, \
+             patch("pathlib.Path.glob") as mock_glob, \
+             patch("builtins.open", create=True) as mock_open:
+
+            # Mock directory exists
+            mock_exists.return_value = True
+
+            # Mock glob returning license files
+            mock_glob.return_value = mock_license_files
+
+            # Mock file reading
+            def mock_file_read(file_path, *args, **kwargs):
+                stem = file_path.stem if hasattr(file_path, 'stem') else str(file_path).split('/')[-1].replace('.json', '')
+                mock_file = MagicMock()
+                mock_file.__enter__ = lambda self: self
+                mock_file.__exit__ = lambda self, *args: None
+                mock_file.read = lambda: json.dumps(mock_license_data.get(stem, {}))
+                return mock_file
+
+            mock_open.side_effect = mock_file_read
 
             result = await server_module.get_license_database()
 
             assert "licenses" in result
             assert len(result["licenses"]) == 2
-            assert result["licenses"][0]["id"] == "MIT"
+            assert "MIT" in result["licenses"]
+            assert "Apache-2.0" in result["licenses"]
 
     @pytest.mark.asyncio
     async def test_get_policy_templates(self):
