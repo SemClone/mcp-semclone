@@ -553,7 +553,7 @@ async def scan_directory(
 @mcp.tool()
 async def check_package(
     identifier: str,
-    check_vulnerabilities: bool = False,
+    check_vulnerabilities: bool = True,
     check_licenses: bool = True
 ) -> Dict[str, Any]:
     """Check a specific package using intelligent tool selection.
@@ -676,15 +676,17 @@ async def check_package(
                     logger.warning(f"osslili execution failed: {e}, skipping license extraction")
 
         # Check vulnerabilities if requested
-        if check_vulnerabilities and result["purl"]:
-            try:
+        if check_vulnerabilities:
+            if result["purl"]:
                 vulnq_result = _run_tool("vulnq", [result["purl"], "--format", "json"], timeout=30)
                 if vulnq_result.returncode == 0 and vulnq_result.stdout:
                     vuln_data = json.loads(vulnq_result.stdout)
                     result["vulnerabilities"] = vuln_data
-            except Exception as e:
-                logger.warning(f"Vulnerability check failed: {e}")
-                result["vulnerabilities"] = {"error": str(e)}
+                else:
+                    result["vulnerabilities"] = []
+            else:
+                # No PURL available, cannot check vulnerabilities
+                result["vulnerabilities"] = []
 
     except Exception as e:
         logger.error(f"Error checking package: {e}")
