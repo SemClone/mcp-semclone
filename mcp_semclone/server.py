@@ -42,6 +42,52 @@ WORKFLOW PATTERNS:
 3. Package identification is optional and only required when checking vulnerabilities or generating detailed SBOMs
 4. Vulnerability checks automatically trigger package identification if not already performed
 
+INTERPRETING LICENSE DATA FROM OSPAC:
+When analyzing license obligations and requirements, use these OSPAC fields to derive implications:
+
+1. NETWORK COPYLEFT (Critical for SaaS/Cloud):
+   - Field: requirements.network_use_disclosure
+   - If TRUE: License requires source disclosure even for SaaS/network use (AGPL-3.0)
+   - If FALSE: License only requires disclosure on distribution (GPL-3.0)
+   - Calculate: saas_safe = NOT network_use_disclosure
+   - Example: AGPL has network_use_disclosure=true → NOT safe for SaaS without disclosure
+
+2. COPYLEFT STRENGTH:
+   - Field: compatibility.contamination_effect
+   - Values: "none" (permissive), "weak" (LGPL/MPL), "strong" (GPL/AGPL)
+   - Strong copyleft + network_use_disclosure=true = AGPL (most restrictive)
+   - Strong copyleft + network_use_disclosure=false = GPL (distribution only)
+   - Use this to determine viral effects on derivative works
+
+3. DISCLOSURE TRIGGERS:
+   - Calculate from requirements.disclose_source + network_use_disclosure:
+     * Both TRUE → "distribution_or_network" (AGPL)
+     * Only disclose_source TRUE → "distribution" (GPL)
+     * Both FALSE → "none" (permissive licenses)
+
+4. MOBILE APP COMPATIBILITY:
+   - GPL licenses (GPL-2.0, GPL-3.0) are incompatible with App Stores due to DRM restrictions
+   - Check: If "GPL" in license_id AND "LGPL" NOT in license_id → app_store_compatible = false
+   - LGPL, MIT, Apache, BSD are all compatible with mobile app stores
+   - Combine with policy validation for definitive answer
+
+5. COMMON PITFALLS (Derive from requirements):
+   - requirements.include_license=true → Pitfall: "Forgetting LICENSE file in distribution"
+   - requirements.include_copyright=true → Pitfall: "Removing copyright notices"
+   - requirements.disclose_source=true → Pitfall: "Not providing source code"
+   - requirements.state_changes=true → Pitfall: "Not documenting modifications"
+
+6. COMPLIANCE CHECKLISTS (Generate from obligations + requirements):
+   - Use obligations[] for narrative requirements
+   - Use requirements.* for specific checklist items
+   - Format as actionable steps for users
+
+7. LICENSE TYPE IMPLICATIONS:
+   - type="permissive" → Ideal for: mobile, saas, commercial, all uses
+   - type="copyleft_weak" → Review: linking requirements, LGPL static linking needs care
+   - type="copyleft_strong" + network_use_disclosure=false → Avoid: mobile apps; OK: SaaS if no distribution
+   - type="copyleft_strong" + network_use_disclosure=true → Avoid: SaaS, mobile; Requires: source publication
+
 TOOL SELECTION GUIDE:
 - scan_directory: Primary tool for analyzing projects/codebases. Use for comprehensive license inventory, optional package identification, and vulnerability assessment
 - check_package: Use when you have a specific package identifier (PURL, CPE, or file) to analyze. Checks both vulnerabilities and licenses for individual packages
