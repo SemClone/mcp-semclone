@@ -11,6 +11,7 @@ MCP (Model Context Protocol) server that provides LLMs with comprehensive OSS co
 mcp-semclone integrates the complete SEMCL.ONE toolchain to provide LLMs with powerful software composition analysis capabilities:
 
 - **License Detection & Compliance**: Scan codebases for licenses and validate against policies
+- **Binary Analysis**: Analyze compiled binaries (APK, EXE, DLL, SO, JAR) for OSS components and licenses
 - **Vulnerability Assessment**: Query multiple vulnerability databases for security issues
 - **Package Discovery**: Identify packages from source code and generate PURLs
 - **SBOM Generation**: Create Software Bill of Materials in SPDX/CycloneDX formats
@@ -20,8 +21,15 @@ mcp-semclone integrates the complete SEMCL.ONE toolchain to provide LLMs with po
 
 ### Tools
 - `scan_directory` - Comprehensive directory scanning for packages, licenses, and vulnerabilities
+- `scan_binary` - Analyze compiled binaries (APK, EXE, DLL, SO, JAR) for OSS components
 - `check_package` - Check specific packages for licenses and vulnerabilities
 - `validate_policy` - Validate licenses against organizational policies
+- `validate_license_list` - Quick license safety validation for distribution types
+- `get_license_obligations` - Get detailed compliance requirements for licenses
+- `check_license_compatibility` - Check if two licenses can be mixed
+- `get_license_details` - Get comprehensive license information including full text
+- `analyze_commercial_risk` - Assess commercial distribution risks
+- `generate_mobile_legal_notice` - Generate legal notices for mobile apps
 - `generate_sbom` - Generate SBOM for projects
 
 ### Resources
@@ -42,6 +50,7 @@ pip install mcp-semclone
 
 This automatically installs all required SEMCL.ONE tools:
 - **osslili** - License detection from source code
+- **binarysniffer** - Binary analysis for OSS components
 - **src2purl** - Package discovery and PURL generation
 - **purl2notices** - License notices extraction
 - **ospac** - Policy validation engine
@@ -86,12 +95,18 @@ Optional environment variables for enhanced functionality:
 export GITHUB_TOKEN="your_github_token"
 export NVD_API_KEY="your_nvd_api_key"
 
-# Tool paths (if not in PATH)
-export OSSLILI_PATH="/path/to/osslili"
-export SRC2PURL_PATH="/path/to/src2purl"
-export VULNQ_PATH="/path/to/vulnq"
-export OSPAC_PATH="/path/to/ospac"
+# Tool paths (optional, only if tools are not in PATH)
+# Tools are auto-detected by default using shutil.which()
+export OSSLILI_PATH="/custom/path/to/osslili"
+export BINARYSNIFFER_PATH="/custom/path/to/binarysniffer"
+export SRC2PURL_PATH="/custom/path/to/src2purl"
+export VULNQ_PATH="/custom/path/to/vulnq"
+export OSPAC_PATH="/custom/path/to/ospac"
+export PURL2NOTICES_PATH="/custom/path/to/purl2notices"
+export UPMEX_PATH="/custom/path/to/upmex"
 ```
+
+**Note:** Tools are automatically detected in your PATH. Environment variables are only needed for custom installation locations.
 
 ## Usage Examples
 
@@ -100,8 +115,10 @@ export OSPAC_PATH="/path/to/ospac"
 Once configured, you can ask your LLM:
 
 - "Scan /path/to/project for license compliance issues"
+- "Analyze this Android APK file for OSS components and licenses"
 - "Check if this project has any critical vulnerabilities"
 - "Generate an SBOM for my project"
+- "What licenses are in this compiled binary?"
 - "Validate these licenses against our commercial distribution policy"
 - "Find all GPL-licensed dependencies in this codebase"
 
@@ -124,6 +141,18 @@ async def main():
         )
         print(f"Found {result['metadata']['total_packages']} packages")
         print(f"Found {result['metadata']['total_vulnerabilities']} vulnerabilities")
+
+        # Scan a binary file
+        binary_result = await client.call_tool(
+            "scan_binary",
+            {
+                "path": "/path/to/app.apk",
+                "analysis_mode": "deep",
+                "check_compatibility": True
+            }
+        )
+        print(f"Found {binary_result['metadata']['component_count']} components")
+        print(f"Licenses: {binary_result['licenses']}")
 
         # Check a specific package
         package_result = await client.call_tool(
