@@ -1,0 +1,42 @@
+# Strands Agent Configuration
+# Customize these settings for your environment
+
+# LLM Settings
+llm:
+  model: llama3                 # Ollama model (llama3, gemma3, deepseek-r1, etc.)
+  temperature: 0.1              # Low for deterministic compliance decisions
+  max_tokens: 2000              # Maximum response length
+
+# MCP Server Settings
+mcp:
+  server_command: python        # Command to launch MCP server
+  server_args:                  # Arguments for MCP server
+    - -m
+    - mcp_semclone.server
+  timeout: 300                  # Timeout in seconds (5 minutes)
+
+# Analysis Settings
+analysis:
+  default_mode: standard        # fast|standard|deep
+  confidence_threshold: 0.5     # For binary scanning (0.0-1.0)
+  max_depth: 10                 # Maximum directory depth
+  parallel_workers: 4           # For batch analysis
+
+# Reporting Settings
+reports:
+  format: markdown              # markdown|json|text
+  include_sbom: true           # Generate SBOM in reports
+  include_notices: true        # Include legal notices
+  output_dir: ./reports        # Where to save reports
+
+# Interactive Mode Settings
+interactive:
+  enable_history: true         # Keep conversation history
+  max_history: 20              # Maximum history items (pairs)
+  enable_autocomplete: false   # Enable command autocomplete
+
+# Logging
+logging:
+  level: INFO                  # DEBUG|INFO|WARNING|ERROR
+  file: agent.log             # Log file path (null = stdout only)
+  verbose: false              # Extra diagnostic output

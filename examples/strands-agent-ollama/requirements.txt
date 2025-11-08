@@ -1,0 +1,12 @@
+# Strands Agent - OSS Compliance with Ollama
+# Python 3.10+ required
+
+# MCP SDK for connecting to MCP servers
+mcp>=1.0.0
+
+# Ollama Python client for local LLM
+ollama>=0.6.0
+
+# Optional: Enhanced output formatting
+rich>=13.0.0
+pydantic>=2.0.0
