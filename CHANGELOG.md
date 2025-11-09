@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2025-11-08
+
+### Added
+- **IDE Integration Guide** - Comprehensive documentation for Cursor and Kiro IDE integration
+  - Complete setup instructions for Cursor IDE MCP server configuration
+  - Kiro IDE integration with autoApprove configuration examples
+  - VS Code and JetBrains IDEs integration references
+  - Configuration templates (.cursor/mcp.json.example, .kiro/settings/mcp.json.example)
+  - Troubleshooting guide and best practices
+  - Use case examples for IDE-integrated compliance analysis
+  - Updated MANIFEST.in to include IDE configuration examples in distributions
+
+### Changed
+- **Strands Agent: Enhanced Compliance Reports** - Beautiful CLI output with rich library
+  - JSON-structured LLM output for reliable parsing (replaces markdown format)
+  - Rich library table formatting with color-coded panels and styled columns
+  - License deduplication in package tables (eliminates duplicate license entries)
+  - Risk indicators with emoji status (✅/⚠️/❌) for visual clarity
+  - Formatted obligation checklists with checkboxes
+  - Color-coded compliance panels (green/yellow/red) based on policy status
+
+- **Model Recommendation Updates** - Switched default model to granite3-dense:8b
+  - Changed default Ollama model from llama3 to granite3-dense:8b
+  - Added warnings about llama3 hallucination issues in documentation
+  - Updated README with model recommendation and testing observations
+  - granite3-dense:8b provides accurate, grounded analysis without inventing packages
+
+### Benefits
+- Developers can now use SEMCL.ONE tools directly within AI-powered IDEs
+- Seamless OSS compliance analysis during development workflow
+- Enhanced agent output readability with professional table formatting
+- More reliable LLM output parsing through structured JSON format
+- Cleaner package tables without duplicate license entries
+- Better model default reduces risk of inaccurate compliance reports
+
 ## [1.3.4] - 2025-11-08
 
 ### Added

@@ -10,3 +10,5 @@ recursive-include mcp_semclone *.py
 recursive-include tests *.py
 recursive-include examples *.py *.json *.md *.yaml *.sh *.txt
 recursive-include guides *.md
+include .cursor/mcp.json.example
+include .kiro/settings/mcp.json.example
