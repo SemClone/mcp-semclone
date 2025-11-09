@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2025-11-08
+
+### Added
+- **New MCP Tool: generate_legal_notices** - Generate comprehensive legal notices using purl2notices
+  - Takes list of PURLs and generates attribution documentation
+  - Supports text, HTML, and markdown output formats
+  - Includes copyright notices, license attributions, and full license texts
+  - Essential for creating NOTICE files for distribution and compliance
+  - Detailed docstring with usage instructions for LLM clients
+
+### Changed
+- **Enhanced generate_sbom Tool** - Now supports dual input modes
+  - Added PURL list support: Can generate SBOMs from lists of Package URLs
+  - Dual mode: Accepts either `purls` parameter OR `path` parameter (directory scan)
+  - Better format support: CycloneDX-JSON, CycloneDX-XML, SPDX-JSON, SPDX
+  - Improved documentation with clear examples for both modes
+  - Enhanced LLM instructions in docstring for better autonomous usage
+
+- **Strands Agent: Batch Processing** - Enhanced directory analysis capabilities
+  - Automatic detection of directories containing package archives
+  - Batch mode for analyzing multiple packages individually
+  - Aggregates results across all packages with license breakdown
+  - Generates comprehensive compliance reports for package collections
+  - Handles 15+ package formats across multiple ecosystems
+
+### Benefits
+- LLM clients can now automatically generate legal compliance documentation
+- Clear tool differentiation: generate_legal_notices (complete attribution) vs generate_mobile_legal_notice (simplified)
+- End-to-end workflow: scan packages → generate SBOM → generate legal notices
+- Better support for multi-package analysis scenarios
+- Comprehensive docstrings enable autonomous tool usage by LLMs
+
 ## [1.3.3] - 2025-11-08
 
 ### Fixed

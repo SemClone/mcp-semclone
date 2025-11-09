@@ -243,14 +243,143 @@ Be concise but thorough. Focus on compliance risks and remediation steps."""
             print(f"❌ Error executing tool {tool_name}: {e}")
             return {"error": str(e)}
 
+    async def _batch_analyze_packages(self, session: ClientSession, archives: List[Path]) -> str:
+        """Batch analyze multiple package archives."""
+        all_results = []
+        all_licenses = {}
+        all_packages = []
+
+        for i, archive in enumerate(archives, 1):
+            print(f"[{i}/{len(archives)}] Analyzing {archive.name}...")
+
+            try:
+                result = await self.execute_tool(
+                    session,
+                    "check_package",
+                    {
+                        "identifier": str(archive),
+                        "check_licenses": True,
+                        "check_vulnerabilities": False
+                    }
+                )
+
+                if "error" not in result:
+                    all_results.append({
+                        "file": archive.name,
+                        "result": result
+                    })
+
+                    # Aggregate licenses
+                    if "licenses" in result and result["licenses"]:
+                        for license_info in result["licenses"]:
+                            # Handle both dict and string license formats
+                            if isinstance(license_info, dict):
+                                license_id = license_info.get("license", "Unknown")
+                            elif isinstance(license_info, str):
+                                license_id = license_info
+                            else:
+                                license_id = str(license_info)
+
+                            if license_id not in all_licenses:
+                                all_licenses[license_id] = {
+                                    "count": 0,
+                                    "files": []
+                                }
+                            all_licenses[license_id]["count"] += 1
+                            all_licenses[license_id]["files"].append(archive.name)
+
+                    # Track packages
+                    if "purl" in result and result["purl"]:
+                        all_packages.append({
+                            "file": archive.name,
+                            "purl": result["purl"]
+                        })
+
+                    print(f"    ✅ Complete")
+                else:
+                    print(f"    ⚠️  Error: {result['error']}")
+
+            except Exception as e:
+                print(f"    ❌ Failed: {e}")
+
+        # Build aggregated results
+        aggregated = {
+            "summary": {
+                "total_packages": len(archives),
+                "successful_scans": len(all_results),
+                "failed_scans": len(archives) - len(all_results),
+                "unique_licenses": len(all_licenses),
+                "packages_identified": len(all_packages)
+            },
+            "licenses": all_licenses,
+            "packages": all_packages,
+            "individual_results": all_results
+        }
+
+        print(f"\n📊 Batch analysis complete, interpreting results...")
+
+        # LLM interprets aggregated results
+        interpretation_query = f"""Analyze these batch OSS compliance scan results and provide a clear, actionable report:
+
+BATCH SCAN SUMMARY:
+- Total packages scanned: {aggregated['summary']['total_packages']}
+- Successful scans: {aggregated['summary']['successful_scans']}
+- Failed scans: {aggregated['summary']['failed_scans']}
+- Unique licenses found: {aggregated['summary']['unique_licenses']}
+
+AGGREGATED RESULTS:
+{json.dumps(aggregated, indent=2)}
+
+Provide:
+1. Executive summary of compliance status across all packages
+2. License breakdown showing which packages use which licenses
+3. Critical issues that need immediate attention
+4. Specific recommendations with priority
+5. Any consistency issues or concerns across the package set
+
+Format your response in clear sections with risk indicators (✅/⚠️/❌)."""
+
+        report = await self.query_llm(interpretation_query)
+
+        print(f"\n{'-'*80}")
+        print("📄 BATCH COMPLIANCE REPORT")
+        print(f"{'-'*80}\n")
+        print(report)
+        print(f"\n{'-'*80}\n")
+
+        return report
+
     async def analyze_path(self, session: ClientSession, path: str) -> str:
         """Perform autonomous compliance analysis on a path."""
         print(f"\n{'='*80}")
         print(f"🔍 Analyzing: {path}")
         print(f"{'='*80}")
 
+        # Pre-analysis: Check if it's a directory with package archives
+        from pathlib import Path
+        path_obj = Path(path)
+        directory_context = ""
+
+        if path_obj.is_dir():
+            # List files in directory
+            files = list(path_obj.iterdir())
+            archive_extensions = {'.jar', '.war', '.ear', '.whl', '.egg', '.tar.gz', '.tgz',
+                                '.gem', '.nupkg', '.rpm', '.deb', '.apk', '.crate', '.conda'}
+
+            # Count package archives
+            archives = [f for f in files if any(str(f).endswith(ext) for ext in archive_extensions)]
+
+            # If directory contains primarily package archives, do batch processing
+            if len(archives) >= 3 and len(archives) > len(files) * 0.3:
+                print(f"\n📦 Detected {len(archives)} package archives in directory")
+                print(f"🔄 Switching to batch processing mode...")
+                print(f"   This will analyze each package individually for accurate results\n")
+
+                return await self._batch_analyze_packages(session, archives)
+
         # Step 1: LLM decides on analysis strategy
         planning_query = f"""I need to analyze this path for OSS compliance: {path}
+{directory_context}
 
 FILE TYPE RECOGNITION:
 - **Package Archives** (.jar, .war, .ear, .whl, .tar.gz, .tgz, .gem, .nupkg, .crate, .conda)
