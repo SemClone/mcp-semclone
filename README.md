@@ -293,6 +293,53 @@ python agent.py interactive
 
 See the [example directory](examples/strands-agent-ollama/) for full details.
 
+## IDE Integration
+
+Use SEMCL.ONE tools directly within your AI-powered IDE for seamless OSS compliance analysis during development.
+
+### Supported IDEs
+
+- **Cursor IDE** - AI-first code editor ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#cursor-ide-integration))
+- **Kiro IDE** - Amazon's agentic AI IDE ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#kiro-ide-integration))
+- **VS Code** - With MCP extension ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#vs-code-integration))
+- **JetBrains IDEs** - With AI plugin ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#jetbrains-ides-integration))
+
+### Quick Setup
+
+**Cursor IDE:**
+```bash
+# 1. Install mcp-semclone
+pip install mcp-semclone
+
+# 2. Copy example configuration
+cp .cursor/mcp.json.example .cursor/mcp.json
+
+# 3. Restart Cursor
+```
+
+**Kiro IDE:**
+```bash
+# 1. Install mcp-semclone
+pip install mcp-semclone
+
+# 2. Copy example configuration
+mkdir -p ~/.kiro/settings
+cp .kiro/settings/mcp.json.example ~/.kiro/settings/mcp.json
+
+# 3. Restart Kiro
+```
+
+### Use Cases in IDEs
+
+Once integrated, ask your IDE's AI:
+- "Check this project for license compliance issues"
+- "What licenses are used in my dependencies?"
+- "Is this package safe for commercial distribution?"
+- "Generate SBOM for this release"
+- "Create NOTICE file for mobile app"
+
+**Complete documentation**: See [IDE Integration Guide](guides/IDE_INTEGRATION_GUIDE.md)
+
 ## Development
 
 ### Running Tests

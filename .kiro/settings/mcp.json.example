@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "python",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": [
+        "scan_directory",
+        "check_package",
+        "validate_policy",
+        "get_license_obligations",
+        "check_license_compatibility",
+        "get_license_details",
+        "analyze_commercial_risk",
+        "validate_license_list",
+        "generate_mobile_legal_notice",
+        "generate_legal_notices",
+        "generate_sbom",
+        "scan_binary"
+      ]
+    }
+  }
+}

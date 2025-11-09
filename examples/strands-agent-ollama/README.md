@@ -6,7 +6,7 @@ This example demonstrates how to build an autonomous agent using **Ollama** (loc
 
 The example shows how to:
 - Connect to a local MCP server (mcp-semclone)
-- Use Ollama with llama3 for local, private LLM inference
+- Use Ollama with granite3-dense:8b for local, private LLM inference
 - Execute OSS compliance workflows autonomously
 - Analyze binaries, source code, and dependencies
 - Generate compliance reports without sending data to external services
@@ -19,28 +19,33 @@ The example shows how to:
 │  (Python app)       │
 └──────────┬──────────┘
            │
-           ├─► Ollama (llama3)  ← Local LLM inference
+           ├─► Ollama (granite3-dense:8b)  ← Local LLM inference
            │
-           └─► MCP Server        ← mcp-semclone tools
+           └─► MCP Server                   ← mcp-semclone tools
                (stdio transport)
                    │
                    ├─► scan_directory()
                    ├─► scan_binary()
                    ├─► validate_policy()
                    ├─► get_license_obligations()
-                   └─► ... (11 tools total)
+                   └─► ... (12 tools total)
 ```
 
 ## Prerequisites
 
-1. **Ollama installed** with llama3 model:
+1. **Ollama installed** with recommended model:
    ```bash
    # Install Ollama: https://ollama.ai
    brew install ollama  # macOS
 
-   # Pull llama3 model
-   ollama pull llama3
+   # Pull granite3-dense:8b model (RECOMMENDED)
+   ollama pull granite3-dense:8b
+
+   # Alternative: llama3 (may produce less accurate results)
+   # ollama pull llama3
    ```
+
+   **⚠️ Model Recommendation:** Use `granite3-dense:8b` for best results. Testing shows it provides accurate, grounded analysis without hallucinations. The `llama3` model may invent non-existent packages in compliance reports.
 
 2. **mcp-semclone installed**:
    ```bash
@@ -70,7 +75,7 @@ ollama list
 ### Basic Compliance Analysis
 
 ```bash
-# Analyze a directory
+# Analyze a directory (uses granite3-dense:8b by default)
 python agent.py /path/to/project
 
 # Analyze a binary file
@@ -79,8 +84,11 @@ python agent.py /path/to/app.apk
 # Use verbose output
 python agent.py /path/to/project --verbose
 
-# Use a different model
-python agent.py /path/to/project --model gemma3
+# Explicitly specify granite3 model (recommended)
+python agent.py /path/to/project --model granite3-dense:8b
+
+# Use alternative model (not recommended - may hallucinate)
+python agent.py /path/to/project --model llama3
 ```
 
 ## How It Works
@@ -107,7 +115,7 @@ async with stdio_client(server_params) as (read, write):
 
 ### 2. LLM Decision Making
 
-The agent uses Ollama's llama3 to:
+The agent uses Ollama's granite3-dense:8b to:
 - Understand user queries
 - Select appropriate MCP tools
 - Interpret tool results

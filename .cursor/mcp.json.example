@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "python",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {}
+    }
+  }
+}

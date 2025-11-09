@@ -3,7 +3,7 @@
 Strands Agent - Autonomous OSS Compliance Agent using Ollama + MCP
 
 This agent demonstrates how to build an autonomous compliance system that:
-- Uses Ollama (llama3) for local LLM inference
+- Uses Ollama (granite3-dense:8b recommended) for local LLM inference
 - Connects to mcp-semclone MCP server for compliance tools
 - Performs end-to-end OSS compliance workflows
 - Generates actionable compliance reports
@@ -29,6 +29,16 @@ except ImportError:
     sys.exit(1)
 
 try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+except ImportError:
+    print("❌ Error: 'rich' package not installed")
+    print("Install with: pip install rich")
+    sys.exit(1)
+
+try:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 except ImportError:
@@ -40,7 +50,7 @@ except ImportError:
 @dataclass
 class AgentConfig:
     """Agent configuration."""
-    llm_model: str = "llama3"
+    llm_model: str = "granite3-dense:8b"
     llm_temperature: float = 0.1
     mcp_server_command: str = "python"
     mcp_server_args: List[str] = None
@@ -316,10 +326,98 @@ Be concise but thorough. Focus on compliance risks and remediation steps."""
             "individual_results": all_results
         }
 
-        print(f"\n📊 Batch analysis complete, interpreting results...")
+        print(f"\n📊 Batch analysis complete, gathering additional compliance data...")
 
-        # LLM interprets aggregated results
-        interpretation_query = f"""Analyze these batch OSS compliance scan results and provide a clear, actionable report:
+        # Step 1: Get license obligations for all unique licenses
+        all_license_ids = list(all_licenses.keys())
+        obligations_data = {}
+
+        if all_license_ids:
+            try:
+                print(f"   Fetching obligations for {len(all_license_ids)} unique licenses...")
+                obligations_result = await self.execute_tool(
+                    session,
+                    "get_license_obligations",
+                    {"licenses": all_license_ids}
+                )
+                if "obligations" in obligations_result:
+                    obligations_data = obligations_result["obligations"]
+            except Exception as e:
+                print(f"   ⚠️  Could not fetch obligations: {e}")
+
+        # Step 2: Generate legal notices for all packages with PURLs
+        legal_notices = ""
+        purls_list = [pkg["purl"] for pkg in all_packages if pkg.get("purl")]
+
+        if purls_list:
+            try:
+                print(f"   Generating legal notices for {len(purls_list)} packages...")
+                notices_result = await self.execute_tool(
+                    session,
+                    "generate_legal_notices",
+                    {
+                        "purls": purls_list,
+                        "output_format": "text",
+                        "include_license_text": False  # Just attribution, not full text
+                    }
+                )
+                if "notices" in notices_result:
+                    legal_notices = notices_result["notices"]
+            except Exception as e:
+                print(f"   ⚠️  Could not generate legal notices: {e}")
+
+        print(f"   Interpreting results...")
+
+        # Build structured package table for LLM
+        package_table_rows = []
+        for pkg_result in aggregated['individual_results']:
+            file_name = pkg_result['file']
+            result = pkg_result['result']
+            purl = result.get('purl', 'N/A')
+            licenses = result.get('licenses', [])
+
+            # Format licenses - deduplicate and sort
+            unique_licenses = set()
+            if isinstance(licenses, list):
+                for lic in licenses:
+                    if isinstance(lic, dict):
+                        unique_licenses.add(lic.get('license', 'Unknown'))
+                    else:
+                        unique_licenses.add(str(lic))
+            elif licenses:
+                unique_licenses.add(str(licenses))
+
+            # Sort for consistent output
+            license_str = ', '.join(sorted(unique_licenses)) if unique_licenses else 'None found'
+
+            package_table_rows.append(f"| {file_name} | {purl} | {license_str} |")
+
+        package_table = "\n".join(package_table_rows)
+
+        # Build license summary
+        license_summary_lines = []
+        for license_id, data in all_licenses.items():
+            files_list = ', '.join(data['files'][:3])  # Show first 3 files
+            if len(data['files']) > 3:
+                files_list += f" ... ({len(data['files'])} total)"
+            license_summary_lines.append(f"  - {license_id}: {data['count']} package(s) - {files_list}")
+
+        license_summary = "\n".join(license_summary_lines)
+
+        # Build obligations summary
+        obligations_summary_lines = []
+        for license_id, oblig_data in obligations_data.items():
+            if 'obligations' in oblig_data:
+                obligations_summary_lines.append(f"\n{license_id}:")
+                for oblig in oblig_data['obligations']:
+                    obligations_summary_lines.append(f"  - {oblig}")
+
+        obligations_summary = "\n".join(obligations_summary_lines) if obligations_summary_lines else "No obligations data available"
+
+        # LLM interprets aggregated results with structured data - output as JSON
+        interpretation_query = f"""Analyze these batch OSS compliance scan results and provide a comprehensive compliance report in JSON format.
+
+IMPORTANT: Only reference packages that appear in the PACKAGE TABLE below. Do not invent or imagine packages that are not listed.
 
 BATCH SCAN SUMMARY:
 - Total packages scanned: {aggregated['summary']['total_packages']}
@@ -327,27 +425,210 @@ BATCH SCAN SUMMARY:
 - Failed scans: {aggregated['summary']['failed_scans']}
 - Unique licenses found: {aggregated['summary']['unique_licenses']}
 
-AGGREGATED RESULTS:
-{json.dumps(aggregated, indent=2)}
+PACKAGE TABLE (ALL ACTUAL PACKAGES - DO NOT ADD OTHERS):
+| Package File | PURL | Licenses |
+|---|---|---|
+{package_table}
 
-Provide:
-1. Executive summary of compliance status across all packages
-2. License breakdown showing which packages use which licenses
-3. Critical issues that need immediate attention
-4. Specific recommendations with priority
-5. Any consistency issues or concerns across the package set
+LICENSE SUMMARY:
+{license_summary}
 
-Format your response in clear sections with risk indicators (✅/⚠️/❌)."""
+LICENSE OBLIGATIONS:
+{obligations_summary}
 
-        report = await self.query_llm(interpretation_query)
+Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
 
-        print(f"\n{'-'*80}")
-        print("📄 BATCH COMPLIANCE REPORT")
-        print(f"{'-'*80}\n")
-        print(report)
-        print(f"\n{'-'*80}\n")
+{{
+  "executive_summary": {{
+    "status": "compliant|needs-review|non-compliant",
+    "summary_text": "Brief 2-3 sentence overview"
+  }},
+  "package_analysis": [
+    {{
+      "package": "filename.ext",
+      "purl": "pkg:type/name@version or N/A",
+      "licenses": "comma-separated licenses",
+      "risk_level": "low|medium|high",
+      "risk_emoji": "✅|⚠️|❌",
+      "considerations": "specific concerns or 'No concerns found'"
+    }}
+  ],
+  "license_compatibility": {{
+    "has_conflicts": true|false,
+    "copyleft_issues": "description or null",
+    "distribution_safe": true|false,
+    "notes": "compatibility analysis"
+  }},
+  "obligations": {{
+    "attribution": ["obligation 1", "obligation 2"],
+    "source_disclosure": ["obligation 1"] or [],
+    "modification_docs": ["obligation 1"] or [],
+    "license_notices": ["obligation 1", "obligation 2"],
+    "other": ["obligation 1"] or []
+  }},
+  "critical_issues": [
+    {{
+      "severity": "high|medium|low",
+      "issue": "description",
+      "action": "recommended action"
+    }}
+  ],
+  "summary": {{
+    "compliance_status": "overall status",
+    "key_risks": ["risk 1", "risk 2"],
+    "next_steps": ["step 1", "step 2"]
+  }}
+}}
 
-        return report
+Return ONLY the JSON object, nothing else."""
+
+        report_json_str = await self.query_llm(interpretation_query)
+
+        # Parse JSON response
+        try:
+            # Clean up response (remove markdown code blocks if present)
+            cleaned = report_json_str.strip()
+            if cleaned.startswith('```'):
+                # Remove markdown code blocks
+                lines = cleaned.split('\n')
+                cleaned = '\n'.join([l for l in lines if not l.startswith('```')])
+
+            report_data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            print(f"⚠️  Warning: Could not parse JSON response: {e}")
+            print(f"Raw response: {report_json_str[:500]}...")
+            # Fallback to plain text
+            print(report_json_str)
+            return report_json_str
+
+        # Use rich console for beautiful formatted output
+        console = Console()
+
+        console.print("\n")
+        console.print(Panel.fit(
+            "📄 COMPREHENSIVE BATCH COMPLIANCE REPORT",
+            style="bold cyan"
+        ))
+        console.print()
+
+        # 1. Executive Summary
+        exec_summary = report_data.get('executive_summary', {})
+        status = exec_summary.get('status', 'unknown')
+        status_color = "green" if status == "compliant" else ("yellow" if status == "needs-review" else "red")
+
+        console.print(Panel(
+            f"[bold {status_color}]Status: {status.upper()}[/bold {status_color}]\n\n{exec_summary.get('summary_text', '')}",
+            title="Executive Summary",
+            border_style=status_color
+        ))
+        console.print()
+
+        # 2. Package Analysis Table
+        pkg_table = Table(title="Package Analysis", show_header=True, header_style="bold magenta")
+        pkg_table.add_column("Package", style="cyan", no_wrap=False)
+        pkg_table.add_column("PURL", style="blue", no_wrap=False)
+        pkg_table.add_column("Licenses", style="green", no_wrap=False)
+        pkg_table.add_column("Risk", justify="center", style="bold")
+        pkg_table.add_column("Considerations", no_wrap=False)
+
+        for pkg in report_data.get('package_analysis', []):
+            pkg_table.add_row(
+                pkg.get('package', ''),
+                pkg.get('purl', 'N/A'),
+                pkg.get('licenses', ''),
+                pkg.get('risk_emoji', ''),
+                pkg.get('considerations', '')
+            )
+
+        console.print(pkg_table)
+        console.print()
+
+        # 3. License Compatibility
+        compat = report_data.get('license_compatibility', {})
+        compat_color = "green" if compat.get('distribution_safe', False) else "yellow"
+        compat_text = f"""**Has Conflicts:** {'Yes ❌' if compat.get('has_conflicts', False) else 'No ✅'}
+**Copyleft Issues:** {compat.get('copyleft_issues') or 'None'}
+**Distribution Safe:** {'Yes ✅' if compat.get('distribution_safe', False) else 'No ❌'}
+
+{compat.get('notes', '')}"""
+
+        console.print(Panel(compat_text, title="License Compatibility Analysis", border_style=compat_color))
+        console.print()
+
+        # 4. Obligations Checklist
+        obligations = report_data.get('obligations', {})
+        oblig_text = ""
+
+        if obligations.get('attribution'):
+            oblig_text += "**Attribution Requirements:**\n"
+            for item in obligations['attribution']:
+                oblig_text += f"- [ ] {item}\n"
+            oblig_text += "\n"
+
+        if obligations.get('source_disclosure'):
+            oblig_text += "**Source Code Disclosure:**\n"
+            for item in obligations['source_disclosure']:
+                oblig_text += f"- [ ] {item}\n"
+            oblig_text += "\n"
+
+        if obligations.get('license_notices'):
+            oblig_text += "**License/Copyright Notices:**\n"
+            for item in obligations['license_notices']:
+                oblig_text += f"- [ ] {item}\n"
+            oblig_text += "\n"
+
+        if obligations.get('other'):
+            oblig_text += "**Other Obligations:**\n"
+            for item in obligations['other']:
+                oblig_text += f"- [ ] {item}\n"
+
+        if oblig_text:
+            console.print(Panel(oblig_text.strip(), title="Project-Wide Obligations Checklist", border_style="yellow"))
+            console.print()
+
+        # 5. Critical Issues
+        critical_issues = report_data.get('critical_issues', [])
+        if critical_issues:
+            issues_table = Table(title="Critical Issues & Recommendations", show_header=True)
+            issues_table.add_column("Severity", justify="center", style="bold")
+            issues_table.add_column("Issue", style="red")
+            issues_table.add_column("Recommended Action", style="yellow")
+
+            for issue in critical_issues:
+                severity_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(issue.get('severity', 'low'), "⚪")
+                issues_table.add_row(
+                    f"{severity_emoji} {issue.get('severity', 'low').upper()}",
+                    issue.get('issue', ''),
+                    issue.get('action', '')
+                )
+
+            console.print(issues_table)
+            console.print()
+
+        # 6. Summary
+        summary = report_data.get('summary', {})
+        summary_text = f"""**Compliance Status:** {summary.get('compliance_status', 'Unknown')}
+
+**Key Risks:**
+{chr(10).join(['- ' + risk for risk in summary.get('key_risks', [])])}
+
+**Next Steps:**
+{chr(10).join(['- ' + step for step in summary.get('next_steps', [])])}"""
+
+        console.print(Panel(summary_text, title="Summary & Next Steps", border_style="cyan"))
+        console.print()
+
+        # Append legal notices if generated
+        if legal_notices:
+            console.print(Panel.fit(
+                "📜 LEGAL NOTICES (ATTRIBUTION)",
+                style="bold yellow"
+            ))
+            console.print()
+            console.print(legal_notices)
+            console.print()
+
+        return report_json_str
 
     async def analyze_path(self, session: ClientSession, path: str) -> str:
         """Perform autonomous compliance analysis on a path."""
@@ -502,8 +783,8 @@ async def main():
     )
     parser.add_argument(
         "--model",
-        default="llama3",
-        help="Ollama model to use (default: llama3)"
+        default="granite3-dense:8b",
+        help="Ollama model to use (default: granite3-dense:8b, recommended for accurate results)"
     )
     parser.add_argument(
         "--verbose",
