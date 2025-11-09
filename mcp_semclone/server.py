@@ -1250,35 +1250,330 @@ async def generate_mobile_legal_notice(
 
 
 @mcp.tool()
-async def generate_sbom(
-    path: str,
-    format: str = "spdx",
-    output_file: Optional[str] = None
+async def generate_legal_notices(
+    purls: List[str],
+    output_format: str = "text",
+    output_file: Optional[str] = None,
+    include_license_text: bool = True
 ) -> Dict[str, Any]:
-    """Generate an SBOM."""
-    try:
-        # First, scan the directory
-        scan_result = await scan_directory(path, check_vulnerabilities=False)
+    """Generate comprehensive legal notices (attribution) for a list of packages using purl2notices.
 
-        sbom = {
-            "spdxVersion": "SPDX-2.3" if format == "spdx" else None,
-            "dataLicense": "CC0-1.0",
-            "name": Path(path).name,
-            "packages": scan_result.get("packages", []),
-            "licenses": scan_result.get("licenses", []),
-            "creationInfo": {
-                "created": "2025-01-05T00:00:00Z",
-                "creators": ["Tool: mcp-semclone-1.3.0"]
+    This tool generates legal compliance documentation including copyright notices,
+    license attributions, and full license texts for software packages. It's essential
+    for creating NOTICE files for distribution and ensuring legal compliance.
+
+    **Use this tool when:**
+    - You have a list of PURLs and need to generate attribution documentation
+    - Creating NOTICE files for software distribution
+    - Generating legal compliance documentation for products
+    - After scanning packages and need to document all licenses
+    - Preparing legal documentation for app store submissions
+
+    **When to use vs other tools:**
+    - Use this for COMPLETE legal notices with copyright and full license texts
+    - Use generate_mobile_legal_notice for simplified mobile app settings screens
+    - Use get_license_details for understanding individual license obligations
+    - This is typically the FINAL step after scanning/analyzing packages
+
+    Args:
+        purls: List of Package URLs (PURLs) to generate notices for
+        output_format: Output format - "text" (default), "html", "markdown"
+        output_file: Optional path to save the output file
+        include_license_text: If True, include full license texts (default: True)
+
+    Returns:
+        Dictionary containing:
+        - notices: The generated legal notices text
+        - packages_processed: Number of packages successfully processed
+        - packages_failed: Number of packages that failed processing
+        - output_file: Path to saved file (if output_file was specified)
+        - format: The output format used
+
+    Examples:
+        # Generate notices for analyzed packages
+        generate_legal_notices(
+            purls=["pkg:npm/express@4.0.0", "pkg:pypi/django@4.2.0"],
+            output_format="text"
+        )
+
+        # Generate HTML notices and save to file
+        generate_legal_notices(
+            purls=purl_list,
+            output_format="html",
+            output_file="/tmp/NOTICE.html"
+        )
+
+        # After batch scan, generate notices
+        scan_result = scan_directory("/path/to/project")
+        purls = [pkg["purl"] for pkg in scan_result["packages"]]
+        generate_legal_notices(purls=purls, output_file="NOTICE.txt")
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        if not purls:
+            return {"error": "No PURLs provided"}
+
+        logger.info(f"Generating legal notices for {len(purls)} packages")
+
+        # Create temporary file with PURLs
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as purl_file:
+            for purl in purls:
+                purl_file.write(f"{purl}\n")
+            purl_file_path = purl_file.name
+
+        # Prepare purl2notices command
+        output_path = output_file or tempfile.mktemp(suffix=f'.{output_format}')
+
+        cmd = [
+            "purl2notices",
+            "-i", purl_file_path,
+            "-o", output_path,
+            "-f", output_format
+        ]
+
+        logger.info(f"Running purl2notices: {' '.join(cmd)}")
+
+        # Run purl2notices
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+
+        # Clean up temp purl file
+        Path(purl_file_path).unlink(missing_ok=True)
+
+        if result.returncode != 0:
+            logger.error(f"purl2notices failed: {result.stderr}")
+            return {
+                "error": f"purl2notices failed: {result.stderr}",
+                "stdout": result.stdout,
+                "returncode": result.returncode
             }
+
+        # Read generated notices
+        if Path(output_path).exists():
+            with open(output_path, 'r') as f:
+                notices_content = f.read()
+
+            return {
+                "notices": notices_content,
+                "packages_processed": len(purls),
+                "packages_failed": 0,
+                "output_file": output_path,
+                "format": output_format,
+                "message": f"Successfully generated legal notices for {len(purls)} packages"
+            }
+        else:
+            return {
+                "error": "purl2notices completed but output file not found",
+                "stdout": result.stdout
+            }
+
+    except subprocess.TimeoutExpired:
+        logger.error("purl2notices timed out after 5 minutes")
+        return {"error": "Legal notices generation timed out after 5 minutes"}
+    except FileNotFoundError:
+        logger.error("purl2notices command not found")
+        return {
+            "error": "purl2notices not found. Install with: pip install purl2notices",
+            "install_command": "pip install purl2notices"
         }
+    except Exception as e:
+        logger.error(f"Error generating legal notices: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def generate_sbom(
+    purls: Optional[List[str]] = None,
+    path: Optional[str] = None,
+    output_format: str = "cyclonedx-json",
+    output_file: Optional[str] = None,
+    include_licenses: bool = True
+) -> Dict[str, Any]:
+    """Generate a Software Bill of Materials (SBOM) from packages or directory scan.
+
+    This tool creates comprehensive SBOMs in industry-standard formats (CycloneDX, SPDX)
+    for software inventory, vulnerability tracking, and compliance documentation.
+
+    **Use this tool when:**
+    - You need to generate an SBOM for a project or package list
+    - Creating inventory documentation for compliance
+    - After analyzing packages and need structured output
+    - Preparing documentation for security audits
+    - Required by procurement or regulatory requirements
+
+    **Input modes:**
+    - Provide `purls` (list of Package URLs) for packages you've already identified
+    - Provide `path` to scan a directory and generate SBOM from discovered packages
+    - At least one of `purls` or `path` must be provided
+
+    Args:
+        purls: Optional list of Package URLs (PURLs) to include in SBOM
+        path: Optional directory path to scan for packages
+        output_format: SBOM format - "cyclonedx-json" (default), "cyclonedx-xml", "spdx-json", "spdx"
+        output_file: Optional path to save the SBOM file
+        include_licenses: If True, include license information (default: True)
+
+    Returns:
+        Dictionary containing:
+        - sbom: The generated SBOM structure
+        - format: The SBOM format used
+        - packages_count: Number of packages included
+        - output_file: Path to saved file (if output_file was specified)
+
+    Examples:
+        # Generate SBOM from PURLs (after batch analysis)
+        generate_sbom(
+            purls=["pkg:npm/express@4.0.0", "pkg:pypi/django@4.2.0"],
+            output_format="cyclonedx-json",
+            output_file="/tmp/sbom.json"
+        )
+
+        # Generate SBOM by scanning directory
+        generate_sbom(
+            path="/path/to/project",
+            output_format="spdx-json"
+        )
+
+        # After batch scan workflow
+        scan_result = check_package("package.jar")
+        generate_sbom(purls=[scan_result["purl"]], include_licenses=True)
+    """
+    import datetime
+
+    try:
+        if not purls and not path:
+            return {"error": "Either 'purls' or 'path' must be provided"}
+
+        packages_list = []
+        licenses_list = []
+        sbom_name = "project"
+
+        # If path provided, scan directory
+        if path:
+            logger.info(f"Generating SBOM by scanning directory: {path}")
+            scan_result = await scan_directory(path, check_vulnerabilities=False)
+            packages_list = scan_result.get("packages", [])
+            licenses_list = scan_result.get("licenses", [])
+            sbom_name = Path(path).name
+
+        # If PURLs provided, use them
+        elif purls:
+            logger.info(f"Generating SBOM from {len(purls)} PURLs")
+            for purl in purls:
+                # Parse PURL to extract package info
+                try:
+                    # Basic PURL parsing
+                    if purl.startswith("pkg:"):
+                        parts = purl[4:].split("/")
+                        ecosystem = parts[0]
+                        name_version = "/".join(parts[1:])
+
+                        if "@" in name_version:
+                            name, version = name_version.rsplit("@", 1)
+                        else:
+                            name = name_version
+                            version = "unknown"
+
+                        packages_list.append({
+                            "purl": purl,
+                            "name": name,
+                            "version": version,
+                            "ecosystem": ecosystem
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to parse PURL {purl}: {e}")
+
+        # Build SBOM based on format
+        if "cyclonedx" in output_format.lower():
+            sbom = {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.4",
+                "version": 1,
+                "metadata": {
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "tools": [{
+                        "name": "mcp-semclone",
+                        "version": "1.3.4"
+                    }],
+                    "component": {
+                        "type": "application",
+                        "name": sbom_name
+                    }
+                },
+                "components": []
+            }
+
+            for pkg in packages_list:
+                component = {
+                    "type": "library",
+                    "name": pkg.get("name", "unknown"),
+                    "version": pkg.get("version", "unknown"),
+                    "purl": pkg.get("purl", "")
+                }
+
+                if include_licenses and "licenses" in pkg:
+                    component["licenses"] = pkg["licenses"]
+
+                sbom["components"].append(component)
+
+        else:  # SPDX format
+            sbom = {
+                "spdxVersion": "SPDX-2.3",
+                "dataLicense": "CC0-1.0",
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "name": sbom_name,
+                "documentNamespace": f"https://semcl.one/sbom/{sbom_name}",
+                "creationInfo": {
+                    "created": datetime.datetime.utcnow().isoformat() + "Z",
+                    "creators": ["Tool: mcp-semclone-1.3.4"]
+                },
+                "packages": []
+            }
+
+            for pkg in packages_list:
+                spdx_pkg = {
+                    "SPDXID": f"SPDXRef-{pkg.get('name', 'unknown')}",
+                    "name": pkg.get("name", "unknown"),
+                    "versionInfo": pkg.get("version", "unknown"),
+                    "downloadLocation": "NOASSERTION"
+                }
+
+                if "purl" in pkg:
+                    spdx_pkg["externalRefs"] = [{
+                        "referenceCategory": "PACKAGE-MANAGER",
+                        "referenceType": "purl",
+                        "referenceLocator": pkg["purl"]
+                    }]
+
+                if include_licenses and "licenses" in pkg:
+                    spdx_pkg["licenseConcluded"] = pkg["licenses"][0] if pkg["licenses"] else "NOASSERTION"
+
+                sbom["packages"].append(spdx_pkg)
 
         # Save to file if requested
         if output_file:
             with open(output_file, "w") as f:
                 json.dump(sbom, f, indent=2)
-            return {"message": f"SBOM saved to {output_file}", "sbom": sbom}
+            logger.info(f"SBOM saved to {output_file}")
+            return {
+                "message": f"SBOM saved to {output_file}",
+                "sbom": sbom,
+                "format": output_format,
+                "packages_count": len(packages_list),
+                "output_file": output_file
+            }
 
-        return {"sbom": sbom}
+        return {
+            "sbom": sbom,
+            "format": output_format,
+            "packages_count": len(packages_list)
+        }
 
     except Exception as e:
         logger.error(f"Error generating SBOM: {e}")

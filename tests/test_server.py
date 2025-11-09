@@ -173,7 +173,7 @@ class TestMCPServer:
                 "licenses": [{"spdx_id": "MIT", "file": "LICENSE"}]
             }
 
-            result = await server_module.generate_sbom("/test", format="spdx")
+            result = await server_module.generate_sbom(path="/test", output_format="spdx")
 
             assert "sbom" in result
             assert result["sbom"]["spdxVersion"] == "SPDX-2.3"
@@ -195,7 +195,7 @@ class TestMCPServer:
                 mock_file = MagicMock()
                 mock_open.return_value.__enter__.return_value = mock_file
 
-                result = await server_module.generate_sbom("/test", output_file=str(output_file))
+                result = await server_module.generate_sbom(path="/test", output_file=str(output_file))
 
                 assert "message" in result
                 assert str(output_file) in result["message"]
@@ -291,7 +291,7 @@ class TestMCPServer:
             # For generate_sbom, patch the scan_directory function call directly
             with patch("mcp_semclone.server.scan_directory") as mock_scan:
                 mock_scan.side_effect = Exception("Scan failed")
-                result = await server_module.generate_sbom("/test")
+                result = await server_module.generate_sbom(path="/test")
                 assert "error" in result
 
     @pytest.mark.asyncio
