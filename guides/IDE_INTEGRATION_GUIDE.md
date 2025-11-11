@@ -661,7 +661,7 @@ For any IDE (replace path with your actual Python path):
         "get_license_details",
         "analyze_commercial_risk",
         "validate_license_list",
-        "generate_mobile_legal_notice",
+        "run_compliance_check",
         "generate_legal_notices",
         "generate_sbom",
         "scan_binary"

@@ -1466,10 +1466,10 @@ async def generate_legal_notices(
     - Anytime you need production-ready legal documentation
 
     WHEN NOT TO USE:
-    - Brief summary for app settings UI → use generate_mobile_legal_summary instead
     - Understanding individual license obligations → use get_license_obligations
     - Just checking license compatibility → use check_license_compatibility
     - Quick validation only → use validate_license_list
+    - Want one-shot complete workflow → use run_compliance_check
 
     WORKFLOW POSITION:
     Typically used AFTER scan_directory/check_package and validation (validate_license_list),

@@ -79,12 +79,13 @@ python agent.py /path/to/project
                    ├─► 11 Compliance Tools
                    │   - scan_binary
                    │   - scan_directory
+                   │   - run_compliance_check (universal workflow)
                    │   - validate_policy
                    │   - get_license_obligations
                    │   - check_license_compatibility
                    │   - get_license_details
                    │   - analyze_commercial_risk
-                   │   - generate_mobile_legal_notice
+                   │   - generate_legal_notices (complete docs)
                    │   - check_package
                    │   - validate_license_list
                    │   - generate_sbom
