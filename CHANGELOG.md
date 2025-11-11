@@ -7,6 +7,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-01-11
+
+### Breaking Changes
+
+#### Removed Tools
+- **REMOVED**: `generate_mobile_legal_summary` (formerly `generate_mobile_legal_notice`)
+  - **Reason**: Project-type-specific tools don't scale
+  - **Migration**: Use `run_compliance_check` for one-shot workflows, or `generate_legal_notices` for manual workflow
+  - **Note**: `generate_legal_notices` was always the correct tool for complete legal documentation
+
+### Added
+
+#### Universal Compliance Workflow
+- **NEW**: `run_compliance_check` - One-shot compliance workflow for ANY project type
+  - Works for mobile, desktop, SaaS, embedded, and any other distribution type
+  - Distribution type is a parameter, not separate workflows
+  - Automatic workflow execution: scan → generate NOTICE.txt → validate → generate sbom.json → check vulnerabilities
+  - Returns APPROVED/REJECTED decision with risk level
+  - Generates artifacts: `NOTICE.txt` and `sbom.json`
+  - Returns comprehensive report with actionable recommendations
+  - Uses default policy if none specified
+
+#### Enhanced Tool Descriptions
+All major tools now include structured guidance for better agent usability:
+
+**scan_directory**:
+- Marked as FIRST STEP in workflows
+- Added "WHEN TO USE" section with clear scenarios
+- Added "WHEN NOT TO USE" section with alternatives
+- Added "WORKFLOW POSITION" guidance
+- Added 3 complete workflow examples
+
+**generate_legal_notices**:
+- Marked as PRIMARY TOOL for legal documentation
+- Enhanced description emphasizing purl2notices backend
+- Added "WHEN TO USE" with most common scenarios
+- Added "WHEN NOT TO USE" with clear alternatives
+- Added "WORKFLOW POSITION" in typical sequences
+- Added 3 complete workflow examples (mobile app compliance, after package analysis, batch compliance)
+- Clarified copyright extraction capability
+
+**validate_license_list**:
+- Added clear positioning: "QUICK answer to: Can I ship this with these licenses?"
+- Added "WHEN TO USE" scenarios
+- Added "WHEN NOT TO USE" with alternatives
+- Added "WORKFLOW POSITION" guidance
+- Added "RETURNS CLEAR DECISION" section
+- Added complete workflow example
+
+### Changed
+
+#### Server Instructions
+- Added universal workflow documentation
+- Two clear options: one-shot vs manual orchestration
+- Emphasized: NO project-type-specific tools exist
+- Distribution type is parameter for policy context, not separate workflow
+- Clear tool sequences for common scenarios
+
+#### Documentation
+- Updated all IDE integration guides (Cursor, Cline, Kiro)
+- Updated mobile app compliance guide to use universal tools
+- Updated example code and configuration files
+- Updated README with universal workflow approach
+- Fixed all references to removed tools
+- Added clear migration guidance
+
+#### Configuration Files
+- Updated all autoApprove lists in `.cursor/mcp.json.example`, `.kiro/settings/mcp.json.example`, `examples/mcp_client_config.json`, `guides/IDE_INTEGRATION_GUIDE.md`
+- Replaced `generate_mobile_legal_summary` with `run_compliance_check`
+
+### Architecture
+
+#### Standard Compliance Workflow
+**Option 1 - One-Shot (Recommended)**:
+```
+run_compliance_check(path, distribution_type="mobile")
+→ APPROVED/REJECTED + NOTICE.txt + sbom.json
+```
+
+**Option 2 - Manual Orchestration**:
+```
+1. scan_directory (discover)
+2. generate_legal_notices (complete docs with purl2notices)
+3. validate_license_list or validate_policy (validation)
+4. generate_sbom (documentation)
+5. Compile report
+```
+
+#### Design Principles
+- NO project-type-specific tools
+- Distribution type is policy validation context only
+- Use default policy if none specified
+- One standardized workflow for everything
+- Scales without code changes
+
+### Fixed
+- Fixed inconsistent tool references in documentation
+- Fixed workflow guidance gaps
+- Fixed tool naming ambiguity
+- Removed confusing tool alternatives
+- Fixed all remaining references to deleted mobile-specific tool
+
+### Migration Guide
+
+If you were using `generate_mobile_legal_notice` or `generate_mobile_legal_summary`:
+
+**Option 1 - Use run_compliance_check (Recommended)**:
+```python
+# Old approach
+scan_result = scan_directory(path)
+notice = generate_mobile_legal_summary(project_name, licenses)
+
+# New approach
+result = run_compliance_check(path, distribution_type="mobile")
+# Automatically generates NOTICE.txt and sbom.json
+# Returns APPROVED/REJECTED decision
+```
+
+**Option 2 - Use generate_legal_notices directly**:
+```python
+# This was always the correct tool for complete documentation
+scan_result = scan_directory(path, identify_packages=True)
+purls = [pkg["purl"] for pkg in scan_result["packages"]]
+generate_legal_notices(purls, output_file="NOTICE.txt")
+```
+
 ## [1.3.7] - 2025-11-10
 
 ### Enhanced

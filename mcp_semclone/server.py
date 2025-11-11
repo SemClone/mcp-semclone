@@ -1720,7 +1720,7 @@ async def generate_sbom(
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "tools": [{
                         "name": "mcp-semclone",
-                        "version": "1.3.7"
+                        "version": "1.4.0"
                     }],
                     "component": {
                         "type": "application",
@@ -1752,7 +1752,7 @@ async def generate_sbom(
                 "documentNamespace": f"https://semcl.one/sbom/{sbom_name}",
                 "creationInfo": {
                     "created": datetime.datetime.utcnow().isoformat() + "Z",
-                    "creators": ["Tool: mcp-semclone-1.3.7"]
+                    "creators": ["Tool: mcp-semclone-1.4.0"]
                 },
                 "packages": []
             }
