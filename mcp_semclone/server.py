@@ -275,7 +275,7 @@ TOOL SELECTION GUIDE:
 - check_license_compatibility: Check if two licenses can be combined
 - get_license_details: Comprehensive license information including full text
 - analyze_commercial_risk: Commercial distribution risk assessment for copyleft detection
-- generate_mobile_legal_notice: Creates legal notices for mobile app compliance
+- run_compliance_check: Universal compliance workflow - one-shot complete check for ANY project type
 - generate_sbom: Generates Software Bill of Materials (calls scan_directory internally)
 
 PERFORMANCE CONSTRAINTS:
@@ -312,14 +312,24 @@ Binary Workflows:
 13. Library verification: scan_binary("library.so", confidence_threshold=0.7) → compare with vendor claims
 14. Combined analysis: scan_directory("src/") + scan_binary("build/app.apk") → validate_policy(all_licenses, distribution) → Gate deployment
 
-Complete Mobile App Compliance Workflow (with validate_policy):
-Step 1: scan_binary("app.apk", analysis_mode="deep", check_compatibility=True)
-Step 2: Extract licenses from result["licenses"]
-Step 3: validate_policy(licenses, distribution="mobile") → Get approve/deny decision
-Step 4: If action=="deny": Show remediation guidance, block deployment
-Step 5: If action=="approve": get_license_obligations(licenses) → Generate compliance checklist
-Step 6: If approved: generate_mobile_legal_notice(licenses) for in-app legal notices screen
-Step 7: generate_sbom(purls) to document components for compliance records and app store submission
+UNIVERSAL COMPLIANCE WORKFLOW (Works for ALL project types - mobile, desktop, saas, embedded, etc.):
+
+Option 1 - ONE-SHOT COMPLETE CHECK (Recommended):
+run_compliance_check(path="/path/to/project", distribution_type="mobile")
+→ Automatically: scans → generates NOTICE.txt → validates policy → creates sbom.json → checks vulns
+→ Returns: APPROVED/REJECTED decision + risk level + complete artifacts
+
+Option 2 - MANUAL STEP-BY-STEP (For custom workflows):
+Step 1: scan_directory(path, check_vulnerabilities=True, identify_packages=True)
+Step 2: Extract licenses from result["licenses"], purls from result["packages"]
+Step 3: validate_license_list(licenses, distribution="mobile") OR validate_policy(licenses, policy_file)
+Step 4: If violations: Show remediation guidance, block deployment
+Step 5: generate_legal_notices(purls, output_file="NOTICE.txt") [PRIMARY TOOL - always use for docs]
+Step 6: generate_sbom(path, output_file="sbom.json")
+Step 7: Compile final report
+
+IMPORTANT: NO project-type-specific tools exist. Use run_compliance_check for ANY type.
+Distribution type is just a parameter for policy context, not a separate workflow.
 
 RESOURCE ACCESS:
 - semcl://license_database: Retrieves comprehensive license compatibility database from ospac
@@ -430,20 +440,70 @@ async def scan_directory(
     identify_packages: bool = False,
     policy_file: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Scan a directory for compliance issues using osslili-first approach.
+    """FIRST STEP: Scan a directory for compliance issues using osslili-first approach.
 
-    By default, only scans for licenses using osslili. Package identification with src2purl
-    is only performed when explicitly requested via identify_packages=True or when
-    check_vulnerabilities=True (since vulnerabilities require package coordinates).
+    This is typically the FIRST tool you should use when analyzing a project.
+    Use this to discover what's in your project before validation or documentation generation.
+
+    PURPOSE:
+    - Inventory all licenses in source code (using osslili)
+    - Identify package coordinates/PURLs (using src2purl)
+    - Check for vulnerabilities (using vulnq)
+    - Validate against policy (using ospac)
+
+    WHEN TO USE:
+    - Starting compliance analysis for a new project (FIRST STEP)
+    - Need to discover all licenses in source code
+    - Want to identify all package dependencies
+    - Beginning vulnerability assessment
+    - Need comprehensive project analysis
+
+    WHEN NOT TO USE:
+    - Already have PURLs and just need legal notices → use generate_legal_notices directly
+    - Analyzing compiled binaries → use scan_binary instead
+    - Just validating known licenses → use validate_license_list
+    - Checking single package → use check_package
+
+    WORKFLOW POSITION:
+    FIRST STEP in most compliance workflows.
+    Use this to discover what's in your project before validation/generation.
+
+    TYPICAL NEXT STEPS:
+    1. For mobile apps:
+       scan_directory(check_vulnerabilities=True, identify_packages=True)
+       → validate_license_list(distribution="mobile")
+       → generate_legal_notices(purls=[...])
+
+    2. For vulnerability assessment:
+       scan_directory(check_vulnerabilities=True)
+       → analyze_commercial_risk(path=".")
+       → check specific packages with check_package for details
+
+    3. For documentation:
+       scan_directory(identify_packages=True)
+       → generate_legal_notices(purls=[...])
+       → generate_sbom(path=".")
+
+    IMPORTANT PARAMETERS:
+    - identify_packages=True: Required if you need PURLs for generate_legal_notices
+    - check_vulnerabilities=True: Automatically enables package identification
+    - check_licenses=True: Default, inventories all licenses (primary goal)
 
     Args:
         path: Directory or file path to scan
-        recursive: Enable recursive scanning
+        recursive: Enable recursive scanning (default: True)
         check_vulnerabilities: Check for vulnerabilities (requires package identification)
-        check_licenses: Scan for license information using osslili
+        check_licenses: Scan for license information using osslili (default: True)
         identify_packages: Use src2purl to identify upstream package coordinates
         policy_file: Optional policy file for license compliance validation
+
+    Returns:
+        Dictionary containing:
+        - licenses: List of detected licenses with evidence
+        - packages: List of identified packages with PURLs (if identify_packages=True)
+        - vulnerabilities: List of vulnerabilities (if check_vulnerabilities=True)
+        - policy_violations: Policy violations (if policy_file provided)
+        - metadata: Summary information including counts
     """
     result = ScanResult()
     path_obj = Path(path)
@@ -1190,10 +1250,38 @@ async def validate_license_list(
     distribution: str = "general",
     check_app_store_compatibility: bool = False
 ) -> Dict[str, Any]:
-    """Validate if a list of licenses is safe for a specific distribution type.
+    """QUICK answer to: "Can I ship this with these licenses?"
 
     This tool analyzes a list of licenses without requiring a filesystem path,
-    making it ideal for quick "Can I ship this?" questions.
+    making it ideal for quick validation checks.
+
+    WHEN TO USE:
+    - You have a list of licenses (from scan results)
+    - Need to validate for specific distribution type (mobile, desktop, saas, embedded)
+    - Want app store compatibility check (iOS/Android)
+    - Fast compliance validation without deep analysis
+    - Quick go/no-go decision for shipping
+
+    WHEN NOT TO USE:
+    - Need to scan codebase first → use scan_directory
+    - Need detailed policy evaluation → use validate_policy
+    - Need complete legal documentation → use generate_legal_notices after validation
+    - Don't have license list yet → use scan_directory first
+
+    WORKFLOW POSITION:
+    Use AFTER scan_directory/check_package to validate licenses,
+    BEFORE generate_legal_notices to confirm compliance.
+
+    COMMON WORKFLOW:
+    scan_directory(identify_packages=True)
+    → validate_license_list(distribution="mobile") [VALIDATION STEP]
+    → generate_legal_notices(purls=[...]) [IF APPROVED]
+
+    RETURNS CLEAR DECISION:
+    - safe_for_distribution: true/false
+    - app_store_compatible: true/false (if check_app_store_compatibility=True)
+    - recommendations: What to do next
+    - violations: What's wrong (if any)
 
     Args:
         licenses: List of SPDX license identifiers (e.g., ["MIT", "Apache-2.0"])
@@ -1349,70 +1437,64 @@ async def validate_license_list(
 
 
 @mcp.tool()
-async def generate_mobile_legal_notice(
-    project_name: str,
-    licenses: List[str],
-    include_attribution: bool = True
-) -> Dict[str, Any]:
-    """Generate legal notice for mobile app distribution."""
-    try:
-        notice = f"MOBILE APP LEGAL NOTICE - {project_name.upper()}\n\n"
-        notice += f"This mobile application includes software components licensed under:\n\n"
-
-        for license_id in licenses:
-            if license_id == 'Apache-2.0':
-                notice += f"Apache License 2.0:\n"
-                notice += f"Copyright notices and license terms must be preserved.\n"
-                notice += f"Licensed under the Apache License, Version 2.0.\n"
-                notice += f"Full license: http://www.apache.org/licenses/LICENSE-2.0\n\n"
-            elif license_id == 'MIT':
-                notice += f"MIT License:\n"
-                notice += f"Copyright notices and license terms must be preserved.\n"
-                notice += f"Permission granted for commercial use with attribution.\n"
-                notice += f"Full license: https://opensource.org/licenses/MIT\n\n"
-            else:
-                notice += f"{license_id} License:\n"
-                notice += f"Please refer to the complete license terms.\n\n"
-
-        if include_attribution:
-            notice += f"Generated by SEMCL.ONE MCP Server for mobile app compliance.\n"
-
-        return {
-            "notice": notice,
-            "licenses_included": licenses,
-            "recommended_location": "App settings > Legal notices"
-        }
-
-    except Exception as e:
-        logger.error(f"Error generating mobile legal notice: {e}")
-        return {"error": str(e)}
-
-
-@mcp.tool()
 async def generate_legal_notices(
     purls: List[str],
     output_format: str = "text",
     output_file: Optional[str] = None,
     include_license_text: bool = True
 ) -> Dict[str, Any]:
-    """Generate comprehensive legal notices (attribution) for a list of packages using purl2notices.
+    """PRIMARY TOOL: Generate comprehensive legal notices (attribution) using purl2notices.
 
-    This tool generates legal compliance documentation including copyright notices,
-    license attributions, and full license texts for software packages. It's essential
-    for creating NOTICE files for distribution and ensuring legal compliance.
+    This is the MAIN tool for creating complete legal documentation with copyright extraction.
+    Powered by purl2notices - automatically extracts copyright holders, fetches license texts
+    from SPDX, and formats production-ready NOTICE files.
 
-    **Use this tool when:**
-    - You have a list of PURLs and need to generate attribution documentation
-    - Creating NOTICE files for software distribution
-    - Generating legal compliance documentation for products
-    - After scanning packages and need to document all licenses
-    - Preparing legal documentation for app store submissions
+    PURPOSE:
+    Creates production-ready legal compliance documentation including:
+    - Complete copyright holder attributions (auto-extracted)
+    - Full license texts from SPDX
+    - Formatted for NOTICE file inclusion
+    - Ready for app store submission
+    - Professional legal documentation
 
-    **When to use vs other tools:**
-    - Use this for COMPLETE legal notices with copyright and full license texts
-    - Use generate_mobile_legal_notice for simplified mobile app settings screens
-    - Use get_license_details for understanding individual license obligations
-    - This is typically the FINAL step after scanning/analyzing packages
+    WHEN TO USE (MOST COMMON SCENARIOS):
+    - Creating NOTICE files for distribution (PRIMARY USE CASE)
+    - Generating legal compliance documentation for any product
+    - After scanning packages and need complete attribution
+    - Preparing legal docs for app store submissions (iOS/Android)
+    - Need copyright holder information (automatically extracted)
+    - Anytime you need production-ready legal documentation
+
+    WHEN NOT TO USE:
+    - Brief summary for app settings UI → use generate_mobile_legal_summary instead
+    - Understanding individual license obligations → use get_license_obligations
+    - Just checking license compatibility → use check_license_compatibility
+    - Quick validation only → use validate_license_list
+
+    WORKFLOW POSITION:
+    Typically used AFTER scan_directory/check_package and validation (validate_license_list),
+    as the FINAL step to generate legal documentation.
+
+    COMMON WORKFLOWS:
+    1. Mobile App Compliance (MOST COMMON):
+       scan_directory(check_vulnerabilities=True, identify_packages=True)
+       → validate_license_list(distribution="mobile")
+       → generate_legal_notices(purls=[...], output_file="NOTICE.txt") [PRIMARY]
+       → generate_sbom(path=".")
+
+    2. After Package Analysis:
+       check_package(identifier="pkg:npm/express@4.0.0")
+       → validate_policy(licenses=[...])
+       → generate_legal_notices(purls=[...])
+
+    3. Batch Compliance:
+       scan_directory(path=".", identify_packages=True)
+       → (parallel) generate_sbom + generate_legal_notices
+
+    BACKEND:
+    Powered by purl2notices - automatically extracts copyright holders from package
+    metadata, fetches license texts from SPDX, and formats complete attribution documents.
+    This is much more powerful than manually creating notices.
 
     Args:
         purls: List of Package URLs (PURLs) to generate notices for
@@ -1886,6 +1968,255 @@ async def scan_binary(
     except Exception as e:
         logger.error(f"Error scanning binary: {e}")
         return {"error": str(e)}
+
+
+@mcp.tool()
+async def run_compliance_check(
+    path: str,
+    distribution_type: Optional[str] = None,
+    policy_file: Optional[str] = None,
+    check_vulnerabilities: bool = True,
+    output_dir: Optional[str] = None
+) -> Dict[str, Any]:
+    """UNIVERSAL COMPLIANCE WORKFLOW: One-shot compliance check for ANY project type.
+
+    This is a convenience tool that runs the complete standard compliance workflow:
+    1. Scan for licenses and packages (scan_directory)
+    2. Generate legal notices with purl2notices (generate_legal_notices)
+    3. Validate against policy using ospac (validate_policy or default policy)
+    4. Generate SBOM for documentation (generate_sbom)
+    5. Check for vulnerabilities (if enabled)
+    6. Return comprehensive summary with APPROVE/REJECT decision
+
+    This tool works for ANY distribution type (mobile, desktop, embedded, SaaS, etc.) -
+    no specialized tools needed. Distribution type is used for policy validation context.
+
+    WHEN TO USE:
+    - You want a complete compliance assessment in one call
+    - Starting a new project compliance review
+    - Need approve/reject decision with full documentation
+    - Don't want to orchestrate multiple tool calls manually
+    - Want standardized compliance workflow
+
+    WHEN NOT TO USE:
+    - You need fine-grained control over each step → call individual tools
+    - You only need specific information → use targeted tools (scan_directory, etc.)
+    - You want to customize the workflow → use individual tools in your preferred sequence
+
+    WORKFLOW EXECUTED:
+    1. scan_directory(path, identify_packages=True, check_licenses=True)
+    2. generate_legal_notices(purls, output_file=NOTICE.txt)
+    3. validate_policy(licenses, policy_file or default_policy)
+    4. generate_sbom(purls, output_file=sbom.json)
+    5. check vulnerabilities (if check_vulnerabilities=True)
+    6. Aggregate results → FINAL DECISION: approved/rejected + risk level
+
+    Args:
+        path: Directory or project to analyze
+        distribution_type: Optional - mobile, desktop, saas, embedded, etc. (for policy context)
+        policy_file: Optional - Path to custom ospac policy. Uses default if not specified.
+        check_vulnerabilities: Check for security vulnerabilities (default: True)
+        output_dir: Optional - Directory to save outputs (NOTICE.txt, sbom.json). Uses path if not specified.
+
+    Returns:
+        Dictionary containing:
+        - decision: "APPROVED" or "REJECTED"
+        - risk_level: "LOW", "MEDIUM", or "HIGH"
+        - summary: Human-readable summary of findings
+        - licenses: List of detected licenses
+        - packages: List of identified packages (PURLs)
+        - vulnerabilities: List of vulnerabilities (if checked)
+        - policy_violations: List of policy violations (if any)
+        - artifacts_created: List of files generated (NOTICE.txt, sbom.json)
+        - recommendations: Actionable next steps
+
+    Example:
+        # Complete compliance check with default settings
+        result = run_compliance_check("/path/to/project")
+
+        # Mobile app compliance with custom policy
+        result = run_compliance_check(
+            path="/path/to/mobile/app",
+            distribution_type="mobile",
+            policy_file="/policies/mobile_policy.json"
+        )
+
+        # Check decision
+        if result["decision"] == "APPROVED":
+            print("✓ Ready to ship!")
+        else:
+            print("✗ Issues found:", result["policy_violations"])
+    """
+    try:
+        logger.info(f"Running universal compliance check for: {path}")
+
+        output_directory = output_dir or path
+        artifacts_created = []
+
+        # STEP 1: Scan directory for licenses and packages
+        logger.info("Step 1/5: Scanning directory for licenses and packages...")
+        scan_result = await scan_directory(
+            path=path,
+            recursive=True,
+            check_licenses=True,
+            identify_packages=True,
+            check_vulnerabilities=False  # We'll do this separately
+        )
+
+        if "error" in scan_result:
+            return {"error": f"Scan failed: {scan_result['error']}", "decision": "ERROR"}
+
+        licenses = scan_result.get("licenses", [])
+        packages = scan_result.get("packages", [])
+        license_ids = list(set([lic.get("spdx_id") for lic in licenses if lic.get("spdx_id")]))
+        purls = [pkg.get("purl") for pkg in packages if pkg.get("purl")]
+
+        logger.info(f"Found {len(license_ids)} unique licenses, {len(purls)} packages")
+
+        # STEP 2: Generate legal notices
+        logger.info("Step 2/5: Generating legal notices with purl2notices...")
+        notices_file = str(Path(output_directory) / "NOTICE.txt")
+        notices_result = {}
+
+        if purls:
+            notices_result = await generate_legal_notices(
+                purls=purls,
+                output_format="text",
+                output_file=notices_file,
+                include_license_text=True
+            )
+            if "output_file" in notices_result:
+                artifacts_created.append(notices_result["output_file"])
+                logger.info(f"Legal notices saved to {notices_file}")
+        else:
+            logger.warning("No packages found - skipping legal notices generation")
+
+        # STEP 3: Validate licenses against policy
+        logger.info("Step 3/5: Validating licenses against policy...")
+        policy_result = {}
+
+        if license_ids:
+            if distribution_type:
+                # Use validate_license_list for quick validation
+                policy_result = await validate_license_list(
+                    licenses=license_ids,
+                    distribution=distribution_type,
+                    check_app_store_compatibility=(distribution_type == "mobile")
+                )
+            elif policy_file:
+                # Use validate_policy if custom policy provided
+                policy_result = await validate_policy(
+                    licenses=license_ids,
+                    policy_file=policy_file,
+                    distribution=distribution_type or "general"
+                )
+            else:
+                # Default: use validate_license_list with general distribution
+                policy_result = await validate_license_list(
+                    licenses=license_ids,
+                    distribution="general",
+                    check_app_store_compatibility=False
+                )
+
+        # STEP 4: Generate SBOM
+        logger.info("Step 4/5: Generating SBOM...")
+        sbom_file = str(Path(output_directory) / "sbom.json")
+        sbom_result = {}
+
+        if purls:
+            sbom_result = await generate_sbom(
+                path=path,
+                output_format="cyclonedx-json",
+                output_file=sbom_file,
+                include_licenses=True
+            )
+            if "output_file" in sbom_result:
+                artifacts_created.append(sbom_result["output_file"])
+                logger.info(f"SBOM saved to {sbom_file}")
+
+        # STEP 5: Check vulnerabilities (if enabled)
+        logger.info("Step 5/5: Checking vulnerabilities...")
+        vulnerabilities = []
+
+        if check_vulnerabilities and purls:
+            # Scan for vulnerabilities (limited to first 10 packages)
+            vuln_scan = await scan_directory(
+                path=path,
+                check_vulnerabilities=True,
+                identify_packages=True
+            )
+            vulnerabilities = vuln_scan.get("vulnerabilities", [])
+            logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
+
+        # FINAL DECISION: Aggregate results
+        decision = "APPROVED"
+        risk_level = "LOW"
+        summary_lines = []
+        recommendations = []
+
+        # Check policy violations
+        policy_violations = policy_result.get("violations", [])
+        if policy_violations or not policy_result.get("safe_for_distribution", True):
+            decision = "REJECTED"
+            risk_level = policy_result.get("risk_level", "HIGH")
+            summary_lines.append(f"❌ REJECTED: Policy violations found")
+            for violation in policy_violations:
+                summary_lines.append(f"  - {violation}")
+        else:
+            summary_lines.append(f"✓ APPROVED: No policy violations")
+
+        # Check vulnerability risk
+        critical_vulns = [v for v in vulnerabilities if v.get("severity") == "CRITICAL"]
+        high_vulns = [v for v in vulnerabilities if v.get("severity") == "HIGH"]
+
+        if critical_vulns:
+            risk_level = "HIGH"
+            summary_lines.append(f"⚠ {len(critical_vulns)} CRITICAL vulnerabilities found")
+            recommendations.append(f"Address {len(critical_vulns)} critical vulnerabilities before deployment")
+        elif high_vulns:
+            if risk_level == "LOW":
+                risk_level = "MEDIUM"
+            summary_lines.append(f"⚠ {len(high_vulns)} HIGH severity vulnerabilities found")
+            recommendations.append(f"Review and address {len(high_vulns)} high severity vulnerabilities")
+
+        # Add recommendations
+        if policy_result.get("recommendations"):
+            recommendations.extend(policy_result["recommendations"])
+
+        if artifacts_created:
+            recommendations.append(f"Review generated files: {', '.join(artifacts_created)}")
+
+        summary = "\n".join(summary_lines)
+
+        return {
+            "decision": decision,
+            "risk_level": risk_level,
+            "summary": summary,
+            "licenses": license_ids,
+            "licenses_count": len(license_ids),
+            "packages": purls,
+            "packages_count": len(purls),
+            "vulnerabilities": vulnerabilities,
+            "vulnerabilities_count": len(vulnerabilities),
+            "critical_vulnerabilities": len(critical_vulns),
+            "high_vulnerabilities": len(high_vulns),
+            "policy_violations": policy_violations,
+            "policy_violations_count": len(policy_violations),
+            "artifacts_created": artifacts_created,
+            "recommendations": recommendations,
+            "distribution_type": distribution_type or "general",
+            "notices_generated": bool(notices_result),
+            "sbom_generated": bool(sbom_result),
+            "metadata": {
+                "scan_path": path,
+                "output_directory": output_directory,
+                "policy_used": "custom" if policy_file else "default"
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error running compliance check: {e}")
+        return {"error": str(e), "decision": "ERROR"}
 
 
 @mcp.resource("semcl://license_database")
