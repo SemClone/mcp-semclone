@@ -196,6 +196,44 @@ Red flags in binary scan results:
 - Undisclosed components (not in vendor docs) → Compliance risk
 - High component count with low confidence → Needs deeper analysis
 
+LICENSE APPROVAL/REJECTION WORKFLOW:
+
+The validate_policy tool is your PRIMARY tool for determining if licenses are approved or rejected for specific project types. Use this for:
+
+**Common Questions:**
+- "Can I use GPL-3.0 in my mobile app?" → validate_policy(["GPL-3.0"], distribution="mobile") → action: "deny"
+- "Are these licenses OK for commercial use?" → validate_policy(licenses, distribution="commercial") → check action field
+- "Is AGPL allowed in SaaS?" → validate_policy(["AGPL-3.0"], distribution="saas") → action: "deny"
+- "What licenses can I use for embedded?" → Try with your licenses, check action in result
+
+**Key Decisions:**
+- action: "approve" → Licenses are ALLOWED, you can proceed ✓
+- action: "deny" → Licenses are BLOCKED, must find alternatives ✗
+- action: "review" → Requires manual legal review ⚠
+- Check result.remediation for specific guidance on fixing "deny" issues
+
+**Distribution Types:**
+- "mobile": Mobile apps (iOS/Android) - Blocks GPL (App Store conflicts), allows MIT/Apache
+- "commercial": Commercial products - Blocks strong copyleft (GPL/AGPL), allows weak copyleft (LGPL) and permissive
+- "saas": SaaS/Cloud services - Blocks AGPL (network copyleft), allows GPL (no distribution)
+- "embedded": Embedded systems - Blocks copyleft (source disclosure burden)
+- "desktop": Desktop applications - Similar to commercial
+- "web": Web applications - Similar to saas
+- "open_source": Open source projects - Allows most licenses
+- "internal": Internal use only - Allows all licenses
+
+**Integration with Scanning:**
+1. Scan project: scan_directory(path) or scan_binary(path)
+2. Extract licenses: licenses = [lic["spdx_id"] for lic in result["licenses"]]
+3. Validate: policy_result = validate_policy(licenses, distribution="mobile")
+4. Check decision: if policy_result["result"]["action"] == "deny": → Alert user/block deployment
+5. Show remediation: policy_result["result"]["remediation"] → "Replace with MIT alternative"
+
+**Quick Policy Checks (without scanning filesystem):**
+validate_policy(["MIT", "Apache-2.0", "GPL-3.0"], distribution="mobile")
+→ Returns: action="deny" because GPL-3.0 conflicts with App Store terms
+→ Remediation: "Replace with MIT, Apache-2.0, or BSD licensed alternative"
+
 TOOL SELECTION GUIDE:
 
 **For Package Archives (.jar, .whl, .rpm, .gem, .nupkg, .crate, etc.):**
@@ -226,7 +264,12 @@ TOOL SELECTION GUIDE:
   * Optional vulnerability scanning (first 10 packages)
   * Use for: Git repositories, source directories, projects with build files
 
-- validate_policy: Standalone license policy validation without filesystem access
+- validate_policy: **PRIMARY tool for license approve/reject decisions**
+  * Evaluates licenses against organizational policies for specific distribution types
+  * Returns clear "approve", "deny", or "review" actions with remediation guidance
+  * Answers: "Can I use these licenses for my [mobile/commercial/saas] project?"
+  * Use this FIRST to check if licenses are allowed before proceeding
+  * No filesystem access needed - validates license lists directly
 - validate_license_list: Quick distribution safety check (e.g., "Can I ship to App Store?")
 - get_license_obligations: Detailed compliance requirements for specific licenses
 - check_license_compatibility: Check if two licenses can be combined
@@ -249,27 +292,34 @@ INPUT FORMAT REQUIREMENTS:
 
 COMMON WORKFLOWS:
 
+License Approval/Rejection Workflows (USE THESE FIRST):
+1. Quick license check: validate_policy(["MIT", "GPL-3.0"], distribution="mobile") → Check action field for approve/deny
+2. After scanning: scan_directory(path) → extract licenses → validate_policy(licenses, distribution="commercial") → Check approval status
+3. Pre-deployment gate: validate_policy(project_licenses, distribution="saas") → if action=="deny": Block deployment, show remediation
+4. Dependency evaluation: For each dependency license → validate_policy([license], distribution=target) → Filter approved only
+
 Source Code Workflows:
-1. Basic compliance check: scan_directory(path, check_licenses=True, identify_packages=False)
-2. Full security assessment: scan_directory(path, check_vulnerabilities=True) - automatically enables package identification
-3. Policy validation: scan_directory(path, policy_file="policy.json") → validate_policy(licenses, policy_file)
-4. Commercial risk analysis: analyze_commercial_risk(path) for mobile/commercial distribution decisions
-5. SBOM generation: generate_sbom(path, format="spdx") for supply chain transparency
+5. Basic compliance check: scan_directory(path, check_licenses=True, identify_packages=False)
+6. Full security assessment: scan_directory(path, check_vulnerabilities=True) - automatically enables package identification
+7. Policy validation with custom rules: scan_directory(path, policy_file="policy.json") → validate_policy(licenses, policy_file, distribution)
+8. Commercial risk analysis: analyze_commercial_risk(path) for mobile/commercial distribution decisions
+9. SBOM generation: generate_sbom(path, format="spdx") for supply chain transparency
 
 Binary Workflows:
-6. Mobile app compliance: scan_binary("app.apk", analysis_mode="deep", check_compatibility=True) → validate_license_list(licenses, distribution="mobile")
-7. Firmware assessment: scan_binary("firmware.bin", analysis_mode="deep", generate_sbom=True) → check copyleft presence
-8. Desktop app check: scan_binary("app.exe") → get_license_obligations(licenses) → generate_mobile_legal_notice(licenses)
-9. Library verification: scan_binary("library.so", confidence_threshold=0.7) → compare with vendor claims
-10. Combined analysis: scan_directory("src/") + scan_binary("build/app.apk") → compare results, ensure completeness
+10. Mobile app compliance: scan_binary("app.apk", analysis_mode="deep") → validate_policy(licenses, distribution="mobile") → Check approve/deny
+11. Firmware assessment: scan_binary("firmware.bin", analysis_mode="deep") → validate_policy(licenses, distribution="embedded") → Block if copyleft detected
+12. Desktop app check: scan_binary("app.exe") → validate_policy(licenses, distribution="desktop") → get_license_obligations(licenses)
+13. Library verification: scan_binary("library.so", confidence_threshold=0.7) → compare with vendor claims
+14. Combined analysis: scan_directory("src/") + scan_binary("build/app.apk") → validate_policy(all_licenses, distribution) → Gate deployment
 
-Complete Mobile App Compliance Workflow:
+Complete Mobile App Compliance Workflow (with validate_policy):
 Step 1: scan_binary("app.apk", analysis_mode="deep", check_compatibility=True)
 Step 2: Extract licenses from result["licenses"]
-Step 3: validate_license_list(licenses, distribution="mobile", check_app_store_compatibility=True)
-Step 4: If violations: get_license_obligations(problematic_licenses) to understand requirements
-Step 5: If compatible: generate_mobile_legal_notice(licenses) for in-app display
-Step 6: generate_sbom=True to document components for compliance records
+Step 3: validate_policy(licenses, distribution="mobile") → Get approve/deny decision
+Step 4: If action=="deny": Show remediation guidance, block deployment
+Step 5: If action=="approve": get_license_obligations(licenses) → Generate compliance checklist
+Step 6: If approved: generate_mobile_legal_notice(licenses) for in-app legal notices screen
+Step 7: generate_sbom(purls) to document components for compliance records and app store submission
 
 RESOURCE ACCESS:
 - semcl://license_database: Retrieves comprehensive license compatibility database from ospac
@@ -699,15 +749,87 @@ async def check_package(
 async def validate_policy(
     licenses: List[str],
     policy_file: Optional[str] = None,
-    distribution: str = "binary"
+    distribution: str = "binary",
+    context: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Validate licenses against a policy."""
+    """Validate if licenses are approved or rejected for a specific project/distribution type.
+
+    This tool evaluates licenses against organizational policies and returns clear
+    APPROVE or DENY decisions based on the distribution type. This is the primary
+    tool for answering: "Can I use these licenses for my [mobile/commercial/saas/etc] project?"
+
+    **Key Use Cases:**
+    - Check if licenses are approved for mobile app distribution
+    - Validate licenses for commercial products
+    - Ensure SaaS deployment compliance
+    - Verify licenses for embedded systems
+    - Check licenses for any distribution type
+
+    **Returns clear approve/deny decisions:**
+    - action: "approve" (licenses are allowed), "deny" (licenses blocked), or "review" (manual review needed)
+    - severity: "info" (approved), "warning" (review), "error" (denied)
+    - message: Explanation of the decision
+    - requirements: What must be done to comply (if approved)
+    - remediation: How to fix the issue (if denied)
+
+    Args:
+        licenses: List of SPDX license IDs to validate (e.g., ["MIT", "Apache-2.0", "GPL-3.0"])
+        policy_file: Optional custom policy directory (uses enterprise defaults if not provided)
+        distribution: Distribution type - determines policy rules:
+                     - "mobile": iOS/Android apps (blocks GPL, allows permissive)
+                     - "commercial": Commercial products (blocks strong copyleft)
+                     - "saas": Software as a Service (blocks AGPL, allows GPL)
+                     - "embedded": Embedded systems (blocks copyleft)
+                     - "desktop": Desktop applications
+                     - "web": Web applications
+                     - "open_source": Open source projects (allows most licenses)
+                     - "internal": Internal use only (allows all)
+        context: Optional usage context (e.g., "static_linking", "dynamic_linking")
+
+    Returns:
+        Dictionary with:
+        - licenses: List of licenses evaluated
+        - distribution: Distribution type used
+        - context: Context evaluated
+        - result.action: "approve", "deny", or "review"
+        - result.severity: "info" (approved), "warning" (review), or "error" (denied)
+        - result.message: Human-readable decision explanation
+        - result.requirements: List of compliance requirements (if approved)
+        - result.remediation: Suggested fix (if denied, e.g., "Replace with MIT alternative")
+        - using_default_policy: Whether default enterprise policy was used
+
+    Examples:
+        # Check if licenses are approved for mobile app
+        validate_policy(["MIT", "Apache-2.0"], distribution="mobile")
+        → action: "approve" ✓
+
+        # Check GPL for mobile (will be denied)
+        validate_policy(["GPL-3.0"], distribution="mobile")
+        → action: "deny", remediation: "Replace with permissive alternative"
+
+        # Check licenses for commercial distribution
+        validate_policy(["MIT", "LGPL-2.1", "Apache-2.0"], distribution="commercial")
+        → action: "approve" or "review" depending on policy
+
+        # Check AGPL for SaaS (will be denied)
+        validate_policy(["AGPL-3.0"], distribution="saas")
+        → action: "deny", reason: "Network copyleft requires source disclosure"
+
+    Workflow Integration:
+        1. After scanning: scan_directory() → extract licenses → validate_policy()
+        2. Quick check: validate_policy(["GPL-3.0"], distribution="mobile") → see if approved
+        3. Policy enforcement: validate_policy() → if action=="deny" → block deployment
+    """
     try:
         # Build ospac evaluate command with licenses as comma-separated string
         licenses_str = ",".join(licenses)
         ospac_args = ["evaluate", "-l", licenses_str, "-d", distribution, "-o", "json"]
 
-        # Only add policy-dir if explicitly provided (otherwise uses default)
+        # Add context if provided
+        if context:
+            ospac_args.extend(["-c", context])
+
+        # Only add policy-dir if explicitly provided (otherwise uses default enterprise policy)
         if policy_file:
             ospac_args.extend(["--policy-dir", policy_file])
 
@@ -715,7 +837,24 @@ async def validate_policy(
         result = _run_tool("ospac", ospac_args, input_data=None)
 
         if result.returncode == 0 and result.stdout:
-            return json.loads(result.stdout)
+            policy_result = json.loads(result.stdout)
+
+            # Enhance result with clearer messaging
+            if "result" in policy_result:
+                action = policy_result["result"].get("action", "unknown")
+                severity = policy_result["result"].get("severity", "info")
+
+                # Add summary for quick understanding
+                policy_result["summary"] = {
+                    "decision": action.upper(),
+                    "approved": action == "approve",
+                    "requires_review": action == "review",
+                    "blocked": action == "deny",
+                    "severity_level": severity,
+                    "distribution_type": distribution
+                }
+
+            return policy_result
         else:
             return {"error": f"Policy validation failed: {result.stderr}"}
 
@@ -1499,7 +1638,7 @@ async def generate_sbom(
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "tools": [{
                         "name": "mcp-semclone",
-                        "version": "1.3.4"
+                        "version": "1.3.7"
                     }],
                     "component": {
                         "type": "application",
@@ -1531,7 +1670,7 @@ async def generate_sbom(
                 "documentNamespace": f"https://semcl.one/sbom/{sbom_name}",
                 "creationInfo": {
                     "created": datetime.datetime.utcnow().isoformat() + "Z",
-                    "creators": ["Tool: mcp-semclone-1.3.4"]
+                    "creators": ["Tool: mcp-semclone-1.3.7"]
                 },
                 "packages": []
             }

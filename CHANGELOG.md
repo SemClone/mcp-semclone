@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.7] - 2025-11-10
+
+### Enhanced
+- **License Approval/Rejection Workflow** - Major enhancement to validate_policy tool
+  - Added comprehensive approve/deny/review decision support for all project types
+  - Enhanced tool documentation with clear examples for mobile, commercial, SaaS, embedded, desktop, web, open_source, and internal distributions
+  - Added `context` parameter for specialized scenarios (static_linking, dynamic_linking)
+  - Returns structured decision output with action, severity, requirements, and remediation guidance
+  - Added summary object with quick boolean flags (approved, blocked, requires_review)
+  - New LLM instructions section dedicated to license approval/rejection workflow
+  - Clear guidance on distribution-specific policy rules (e.g., GPL blocked for mobile, AGPL blocked for SaaS)
+  - Workflow integration examples showing validate_policy as pre-deployment gate
+  - Quick policy check examples without filesystem scanning
+
+### Changed
+- **Updated OSPAC dependency** from >=1.2.2 to >=1.2.3
+  - Leverages latest policy engine improvements
+  - Enhanced policy clarity for distribution types
+  - Better remediation guidance in deny scenarios
+
+### Benefits
+- LLMs can now clearly determine if licenses are approved for specific project types
+- Users get immediate approve/deny/review decisions with actionable remediation
+- Eliminates ambiguity in license compliance decisions
+- Enables automated policy enforcement in CI/CD pipelines
+- Distribution-specific policies prevent common compliance mistakes (GPL in mobile, AGPL in SaaS)
+- Context-aware evaluation for linking scenarios
+
+## [1.3.6] - 2025-11-10
+
+### Added
+- **Pipx Installation Documentation** - Comprehensive installation guide using pipx
+  - Step-by-step instructions for pipx installation with `pipx inject`
+  - Ensures all SEMCL.ONE tools available as both libraries and CLI commands
+  - Isolated environment prevents dependency conflicts
+  - Updated MCP configuration examples for both pip and pipx installations
+  - Updated IDE integration quick setup sections with pipx alternative
+  - Clear documentation of all included SEMCL.ONE tools (osslili, binarysniffer, src2purl, purl2notices, ospac, vulnq, upmex)
+
+### Benefits
+- Users can choose installation method based on their needs
+- Pipx provides clean isolation and easy updates
+- All tools globally accessible in PATH when using pipx
+- Better documentation clarity about included dependencies
+- Easier package management with `pipx upgrade` and `pipx uninstall`
+
 ## [1.3.5] - 2025-11-08
 
 ### Added
@@ -272,7 +318,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic repository structure
 - License and initial documentation
 
-[Unreleased]: https://github.com/SemClone/mcp-semclone/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/SemClone/mcp-semclone/compare/v1.3.7...HEAD
+[1.3.7]: https://github.com/SemClone/mcp-semclone/compare/v1.3.6...v1.3.7
+[1.3.6]: https://github.com/SemClone/mcp-semclone/compare/v1.3.5...v1.3.6
+[1.3.5]: https://github.com/SemClone/mcp-semclone/compare/v1.3.4...v1.3.5
+[1.3.4]: https://github.com/SemClone/mcp-semclone/compare/v1.3.3...v1.3.4
+[1.3.3]: https://github.com/SemClone/mcp-semclone/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/SemClone/mcp-semclone/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/SemClone/mcp-semclone/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/SemClone/mcp-semclone/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/SemClone/mcp-semclone/compare/v0.1.0...v1.2.0
 [0.1.0]: https://github.com/SemClone/mcp-semclone/compare/v0.0.1...v0.1.0

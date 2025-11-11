@@ -1,23 +1,66 @@
 {
   "mcpServers": {
     "semclone": {
-      "command": "python",
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
       "args": ["-m", "mcp_semclone.server"],
       "env": {
         "GITHUB_TOKEN": "ghp_your_github_token_here_optional",
         "NVD_API_KEY": "your_nvd_api_key_here_optional",
         "MCP_LOG_LEVEL": "INFO"
       },
+      "disabled": false,
+      "autoApprove": [
+        "scan_directory",
+        "check_package",
+        "validate_policy",
+        "get_license_obligations",
+        "check_license_compatibility",
+        "get_license_details",
+        "analyze_commercial_risk",
+        "validate_license_list",
+        "generate_mobile_legal_notice",
+        "generate_legal_notices",
+        "generate_sbom",
+        "scan_binary"
+      ],
       "description": "SEMCL.ONE OSS Compliance and Vulnerability Analysis"
+    },
+    "semclone-pip": {
+      "comment": "Alternative configuration for pip installation",
+      "command": "/path/to/your/python",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_your_github_token_here_optional",
+        "NVD_API_KEY": "your_nvd_api_key_here_optional",
+        "MCP_LOG_LEVEL": "INFO"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "scan_directory",
+        "check_package",
+        "validate_policy",
+        "get_license_obligations",
+        "check_license_compatibility",
+        "get_license_details",
+        "analyze_commercial_risk",
+        "validate_license_list",
+        "generate_mobile_legal_notice",
+        "generate_legal_notices",
+        "generate_sbom",
+        "scan_binary"
+      ],
+      "description": "SEMCL.ONE OSS Compliance (pip installation)"
     },
     "semclone-local": {
       "comment": "Alternative configuration for local development",
-      "command": "/usr/local/bin/python3",
+      "command": "/path/to/your/python",
       "args": ["/path/to/mcp-semclone/mcp_semclone/server.py"],
       "env": {
         "PYTHONPATH": "/path/to/mcp-semclone",
         "MCP_LOG_LEVEL": "DEBUG"
       },
+      "disabled": false,
+      "autoApprove": [],
       "description": "Local development version of SEMCL.ONE MCP server"
     }
   },

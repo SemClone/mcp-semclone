@@ -57,6 +57,30 @@ This automatically installs all required SEMCL.ONE tools:
 - **vulnq** - Vulnerability database queries
 - **upmex** - Package metadata extraction
 
+### Pipx Installation (Recommended for Global Access)
+
+[pipx](https://pipx.pypa.io/) installs the package in an isolated environment while making the CLI tools globally available. This is ideal for avoiding dependency conflicts with other Python packages on your system.
+
+```bash
+# Install pipx if you don't have it
+pip install pipx
+pipx ensurepath
+
+# Install mcp-semclone
+pipx install mcp-semclone
+
+# IMPORTANT: Inject all SEMCL.ONE tool dependencies into the same isolated environment
+# This ensures all tools are available both as libraries and CLI commands
+# Required by some agents that need direct CLI tool access
+pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+```
+
+**Benefits of pipx:**
+- ✅ Isolated environment prevents dependency conflicts
+- ✅ All tools globally accessible in PATH
+- ✅ Easy to update: `pipx upgrade mcp-semclone`
+- ✅ Clean uninstall: `pipx uninstall mcp-semclone`
+
 ### Development Installation
 
 ```bash
@@ -69,22 +93,39 @@ pip install -e .[dev]
 
 ### MCP Client Integration
 
-Add to your MCP client configuration file:
+**Quick Start - Basic Configuration:**
+
+Add to your MCP client configuration file (e.g., `.cursor/mcp.json`, Cline settings, `.kiro/settings/mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "semclone": {
-      "command": "python",
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
       "args": ["-m", "mcp_semclone.server"],
-      "env": {
-        "GITHUB_TOKEN": "your_github_token_optional",
-        "NVD_API_KEY": "your_nvd_api_key_optional"
-      }
+      "env": {}
     }
   }
 }
 ```
+
+**Find your pipx Python path:**
+```bash
+# macOS/Linux
+echo "$HOME/.local/pipx/venvs/mcp-semclone/bin/python3"
+
+# Or locate automatically
+pipx list --include-injected | grep mcp-semclone -A 3
+```
+
+**📖 For detailed setup instructions including:**
+- IDE-specific configurations (Cursor, Cline, Kiro, VS Code, JetBrains)
+- Auto-approve settings
+- pip vs pipx configurations
+- Configuration templates
+- Troubleshooting
+
+**See the [IDE Integration Guide](guides/IDE_INTEGRATION_GUIDE.md)**
 
 ### Environment Variables
 
@@ -299,35 +340,23 @@ Use SEMCL.ONE tools directly within your AI-powered IDE for seamless OSS complia
 
 ### Supported IDEs
 
-- **Cursor IDE** - AI-first code editor ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#cursor-ide-integration))
-- **Kiro IDE** - Amazon's agentic AI IDE ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#kiro-ide-integration))
-- **VS Code** - With MCP extension ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#vs-code-integration))
-- **JetBrains IDEs** - With AI plugin ([Setup Guide](guides/IDE_INTEGRATION_GUIDE.md#jetbrains-ides-integration))
+- **Cursor IDE** - AI-first code editor
+- **Cline** - AI coding extension for VS Code
+- **Kiro IDE** - Amazon's agentic AI IDE
+- **VS Code** - With MCP extension
+- **JetBrains IDEs** - With AI plugin
 
 ### Quick Setup
 
-**Cursor IDE:**
-```bash
-# 1. Install mcp-semclone
-pip install mcp-semclone
+1. **Install mcp-semclone** with pipx (recommended):
+   ```bash
+   pipx install mcp-semclone
+   pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+   ```
 
-# 2. Copy example configuration
-cp .cursor/mcp.json.example .cursor/mcp.json
+2. **Configure your IDE** - Add MCP server configuration (see guide for IDE-specific paths)
 
-# 3. Restart Cursor
-```
-
-**Kiro IDE:**
-```bash
-# 1. Install mcp-semclone
-pip install mcp-semclone
-
-# 2. Copy example configuration
-mkdir -p ~/.kiro/settings
-cp .kiro/settings/mcp.json.example ~/.kiro/settings/mcp.json
-
-# 3. Restart Kiro
-```
+3. **Restart your IDE**
 
 ### Use Cases in IDEs
 
@@ -338,7 +367,7 @@ Once integrated, ask your IDE's AI:
 - "Generate SBOM for this release"
 - "Create NOTICE file for mobile app"
 
-**Complete documentation**: See [IDE Integration Guide](guides/IDE_INTEGRATION_GUIDE.md)
+**📖 Complete documentation**: See [IDE Integration Guide](guides/IDE_INTEGRATION_GUIDE.md)
 
 ## Development
 
