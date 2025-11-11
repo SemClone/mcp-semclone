@@ -7,13 +7,29 @@ This guide explains how to integrate the SEMCL.ONE MCP server with popular AI-po
 The SEMCL.ONE MCP server works with any IDE that supports the Model Context Protocol (MCP):
 
 - **Cursor IDE** - AI-first code editor
+- **Cline** - AI coding extension for VS Code
 - **Kiro IDE** - Amazon's agentic AI IDE (launched July 2025)
 - **VS Code** (with MCP extensions)
 - **JetBrains IDEs** (with AI plugin + MCP support)
 
 ## Prerequisites
 
-1. **Install mcp-semclone**:
+1. **Install mcp-semclone** (choose one method):
+
+   **Option A: Using pipx (recommended)**:
+   ```bash
+   # Install pipx if you don't have it
+   pip install pipx
+   pipx ensurepath
+
+   # Install mcp-semclone
+   pipx install mcp-semclone
+
+   # IMPORTANT: Install all CLI dependencies - required by some agents
+   pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+   ```
+
+   **Option B: Using pip**:
    ```bash
    pip install mcp-semclone
    ```
@@ -39,12 +55,58 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
    ```
 
    Create `.cursor/mcp.json`:
+
+   **If installed with pipx**:
    ```json
    {
      "mcpServers": {
        "semclone": {
-         "command": "python",
-         "args": ["-m", "mcp_semclone.server"]
+         "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
+         "args": ["-m", "mcp_semclone.server"],
+         "env": {},
+         "disabled": false,
+         "autoApprove": [
+           "scan_directory",
+           "check_package",
+           "validate_policy",
+           "get_license_obligations",
+           "check_license_compatibility",
+           "get_license_details",
+           "analyze_commercial_risk",
+           "validate_license_list",
+           "generate_mobile_legal_notice",
+           "generate_legal_notices",
+           "generate_sbom",
+           "scan_binary"
+         ]
+       }
+     }
+   }
+   ```
+
+   **If installed with pip**:
+   ```json
+   {
+     "mcpServers": {
+       "semclone": {
+         "command": "/path/to/your/python",
+         "args": ["-m", "mcp_semclone.server"],
+         "env": {},
+         "disabled": false,
+         "autoApprove": [
+           "scan_directory",
+           "check_package",
+           "validate_policy",
+           "get_license_obligations",
+           "check_license_compatibility",
+           "get_license_details",
+           "analyze_commercial_risk",
+           "validate_license_list",
+           "generate_mobile_legal_notice",
+           "generate_legal_notices",
+           "generate_sbom",
+           "scan_binary"
+         ]
        }
      }
    }
@@ -52,6 +114,15 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
 
    **For global configuration** (all projects):
    Create `~/.cursor/mcp.json` with the same content.
+
+   **Find your pipx Python path**:
+   ```bash
+   # macOS/Linux
+   echo "$HOME/.local/pipx/venvs/mcp-semclone/bin/python3"
+
+   # Or locate it automatically
+   pipx list --include-injected | grep mcp-semclone -A 3
+   ```
 
 3. **Restart Cursor IDE**
 
@@ -118,11 +189,13 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
    ```
 
    Create `.kiro/settings/mcp.json`:
+
+   **If installed with pipx**:
    ```json
    {
      "mcpServers": {
        "semclone": {
-         "command": "python",
+         "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
          "args": ["-m", "mcp_semclone.server"],
          "env": {},
          "disabled": false,
@@ -143,6 +216,46 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
        }
      }
    }
+   ```
+
+   **If installed with pip**:
+   ```json
+   {
+     "mcpServers": {
+       "semclone": {
+         "command": "/path/to/your/python",
+         "args": ["-m", "mcp_semclone.server"],
+         "env": {},
+         "disabled": false,
+         "autoApprove": [
+           "scan_directory",
+           "check_package",
+           "validate_policy",
+           "get_license_obligations",
+           "check_license_compatibility",
+           "get_license_details",
+           "analyze_commercial_risk",
+           "validate_license_list",
+           "generate_mobile_legal_notice",
+           "generate_legal_notices",
+           "generate_sbom",
+           "scan_binary"
+         ]
+       }
+     }
+   }
+   ```
+
+   **Find your pipx Python path**:
+   ```bash
+   # macOS/Linux
+   echo "$HOME/.local/pipx/venvs/mcp-semclone/bin/python3"
+
+   # Windows
+   echo "%USERPROFILE%\.local\pipx\venvs\mcp-semclone\Scripts\python.exe"
+
+   # Or locate it automatically
+   pipx list --include-injected | grep mcp-semclone -A 3
    ```
 
    **For user-wide configuration**:
@@ -175,6 +288,120 @@ The `autoApprove` field allows these tools to run without prompting the user:
 - **Documentation**: `generate_legal_notices`, `generate_mobile_legal_notice`, `generate_sbom`
 
 **Note**: Only include tools you trust to run automatically. You can remove sensitive tools if needed.
+
+## Cline Integration
+
+Cline is a popular AI coding extension for VS Code with native MCP support.
+
+### Quick Setup
+
+1. **Install Cline extension** in VS Code from the marketplace
+
+2. **Locate your Cline configuration**:
+   - Open Cline settings in VS Code
+   - Look for "MCP Settings" or configuration file path
+   - Typically stored in VS Code settings or a separate config file
+
+3. **Create or edit MCP configuration**:
+
+   **If installed with pipx**:
+   ```json
+   {
+     "mcpServers": {
+       "semclone": {
+         "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
+         "args": ["-m", "mcp_semclone.server"],
+         "env": {},
+         "disabled": false,
+         "autoApprove": [
+           "scan_directory",
+           "check_package",
+           "validate_policy",
+           "get_license_obligations",
+           "check_license_compatibility",
+           "get_license_details",
+           "analyze_commercial_risk",
+           "validate_license_list",
+           "generate_mobile_legal_notice",
+           "generate_legal_notices",
+           "generate_sbom",
+           "scan_binary"
+         ]
+       }
+     }
+   }
+   ```
+
+   **If installed with pip**:
+   ```json
+   {
+     "mcpServers": {
+       "semclone": {
+         "command": "/path/to/your/python",
+         "args": ["-m", "mcp_semclone.server"],
+         "env": {},
+         "disabled": false,
+         "autoApprove": [
+           "scan_directory",
+           "check_package",
+           "validate_policy",
+           "get_license_obligations",
+           "check_license_compatibility",
+           "get_license_details",
+           "analyze_commercial_risk",
+           "validate_license_list",
+           "generate_mobile_legal_notice",
+           "generate_legal_notices",
+           "generate_sbom",
+           "scan_binary"
+         ]
+       }
+     }
+   }
+   ```
+
+   **Find your pipx Python path**:
+   ```bash
+   # macOS/Linux
+   echo "$HOME/.local/pipx/venvs/mcp-semclone/bin/python3"
+
+   # Windows
+   echo "%USERPROFILE%\.local\pipx\venvs\mcp-semclone\Scripts\python.exe"
+
+   # Or locate it automatically
+   pipx list --include-injected | grep mcp-semclone -A 3
+   ```
+
+   **Find your Python path (for pip installation)**:
+   ```bash
+   # macOS/Linux
+   which python3
+
+   # Windows
+   where python
+   ```
+
+4. **Restart VS Code** or reload Cline
+
+5. **Verify connection**:
+   - Open Cline panel in VS Code
+   - Check that MCP tools are available
+   - Try asking: "Scan this project for license compliance issues"
+
+### Configuration Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `command` | Yes | Full path to Python executable |
+| `args` | Yes | Arguments to run the MCP server |
+| `env` | Yes | Environment variables (can be empty object) |
+| `disabled` | Yes | Set to `false` to enable the server |
+| `autoApprove` | Yes | List of tools that don't require user confirmation |
+
+**Important Notes**:
+- **Use full paths** for the `command` field (not just "python" or "python3")
+- **Install all dependencies** with `pipx inject` if using pipx - some agents require CLI tool access
+- The `autoApprove` list allows tools to run without prompting for each execution
 
 ## VS Code Integration
 
@@ -362,28 +589,14 @@ Once integrated, your IDE's AI will have access to these 12 tools:
 
 ## Configuration Templates
 
-### Minimal Configuration (Cursor)
+### Minimal Configuration (Cursor with pipx)
 
 `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
     "semclone": {
-      "command": "python",
-      "args": ["-m", "mcp_semclone.server"]
-    }
-  }
-}
-```
-
-### Minimal Configuration (Kiro)
-
-`.kiro/settings/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "semclone": {
-      "command": "python",
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
       "args": ["-m", "mcp_semclone.server"],
       "env": {},
       "disabled": false,
@@ -393,14 +606,78 @@ Once integrated, your IDE's AI will have access to these 12 tools:
 }
 ```
 
-### Production Configuration (Kiro with selective auto-approve)
+### Minimal Configuration (Cline with pipx)
+
+Cline MCP configuration:
+```json
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+### Minimal Configuration (Kiro with pipx)
 
 `.kiro/settings/mcp.json`:
 ```json
 {
   "mcpServers": {
     "semclone": {
-      "command": "python",
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+### Production Configuration (Full auto-approve)
+
+For any IDE (replace path with your actual Python path):
+```json
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
+      "args": ["-m", "mcp_semclone.server"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": [
+        "scan_directory",
+        "check_package",
+        "validate_policy",
+        "get_license_obligations",
+        "check_license_compatibility",
+        "get_license_details",
+        "analyze_commercial_risk",
+        "validate_license_list",
+        "generate_mobile_legal_notice",
+        "generate_legal_notices",
+        "generate_sbom",
+        "scan_binary"
+      ]
+    }
+  }
+}
+```
+
+### Selective Auto-Approve Configuration
+
+For read-only operations (safe for most use cases):
+```json
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
       "args": ["-m", "mcp_semclone.server"],
       "env": {},
       "disabled": false,
@@ -408,7 +685,8 @@ Once integrated, your IDE's AI will have access to these 12 tools:
         "get_license_details",
         "get_license_obligations",
         "check_license_compatibility",
-        "validate_license_list"
+        "validate_license_list",
+        "check_package"
       ]
     }
   }

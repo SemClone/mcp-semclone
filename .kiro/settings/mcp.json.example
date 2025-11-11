@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "semclone": {
-      "command": "python",
+      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
       "args": ["-m", "mcp_semclone.server"],
       "env": {},
       "disabled": false,
