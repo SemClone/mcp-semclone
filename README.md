@@ -29,7 +29,7 @@ mcp-semclone integrates the complete SEMCL.ONE toolchain to provide LLMs with po
 - `check_license_compatibility` - Check if two licenses can be mixed
 - `get_license_details` - Get comprehensive license information including full text
 - `analyze_commercial_risk` - Assess commercial distribution risks
-- `generate_mobile_legal_notice` - Generate legal notices for mobile apps
+- `run_compliance_check` - Universal one-shot compliance workflow for any project type
 - `generate_sbom` - Generate SBOM for projects
 
 ### Resources

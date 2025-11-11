@@ -74,7 +74,7 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
            "get_license_details",
            "analyze_commercial_risk",
            "validate_license_list",
-           "generate_mobile_legal_notice",
+           "run_compliance_check",
            "generate_legal_notices",
            "generate_sbom",
            "scan_binary"
@@ -102,7 +102,7 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
            "get_license_details",
            "analyze_commercial_risk",
            "validate_license_list",
-           "generate_mobile_legal_notice",
+           "run_compliance_check",
            "generate_legal_notices",
            "generate_sbom",
            "scan_binary"
@@ -208,7 +208,7 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
            "get_license_details",
            "analyze_commercial_risk",
            "validate_license_list",
-           "generate_mobile_legal_notice",
+           "run_compliance_check",
            "generate_legal_notices",
            "generate_sbom",
            "scan_binary"
@@ -236,7 +236,7 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
            "get_license_details",
            "analyze_commercial_risk",
            "validate_license_list",
-           "generate_mobile_legal_notice",
+           "run_compliance_check",
            "generate_legal_notices",
            "generate_sbom",
            "scan_binary"
@@ -285,7 +285,8 @@ The `autoApprove` field allows these tools to run without prompting the user:
 - **License Analysis**: `get_license_details`, `get_license_obligations`, `check_license_compatibility`
 - **Package Scanning**: `scan_directory`, `check_package`, `scan_binary`
 - **Policy & Risk**: `validate_policy`, `analyze_commercial_risk`, `validate_license_list`
-- **Documentation**: `generate_legal_notices`, `generate_mobile_legal_notice`, `generate_sbom`
+- **Documentation**: `generate_legal_notices`, `generate_sbom`
+- **Complete Workflow**: `run_compliance_check` (one-shot compliance check for any project type)
 
 **Note**: Only include tools you trust to run automatically. You can remove sensitive tools if needed.
 
@@ -322,7 +323,7 @@ Cline is a popular AI coding extension for VS Code with native MCP support.
            "get_license_details",
            "analyze_commercial_risk",
            "validate_license_list",
-           "generate_mobile_legal_notice",
+           "run_compliance_check",
            "generate_legal_notices",
            "generate_sbom",
            "scan_binary"
@@ -350,7 +351,7 @@ Cline is a popular AI coding extension for VS Code with native MCP support.
            "get_license_details",
            "analyze_commercial_risk",
            "validate_license_list",
-           "generate_mobile_legal_notice",
+           "run_compliance_check",
            "generate_legal_notices",
            "generate_sbom",
            "scan_binary"
@@ -536,7 +537,7 @@ Once integrated, your IDE's AI will have access to these 12 tools:
 | `get_license_details` | Get comprehensive license information |
 | `analyze_commercial_risk` | Analyze commercial licensing risks |
 | `validate_license_list` | Validate license list for distribution type |
-| `generate_mobile_legal_notice` | Generate mobile app legal notices |
+| `run_compliance_check` | Universal compliance workflow for any project type |
 | `generate_legal_notices` | Generate comprehensive attribution docs |
 | `generate_sbom` | Generate Software Bill of Materials |
 
