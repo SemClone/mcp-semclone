@@ -57,6 +57,29 @@ This automatically installs all required SEMCL.ONE tools:
 - **vulnq** - Vulnerability database queries
 - **upmex** - Package metadata extraction
 
+### Pipx Installation (Recommended for Global Access)
+
+[pipx](https://pipx.pypa.io/) installs the package in an isolated environment while making the CLI tools globally available. This is ideal for avoiding dependency conflicts with other Python packages on your system.
+
+```bash
+# Install pipx if you don't have it
+pip install pipx
+pipx ensurepath
+
+# Install mcp-semclone
+pipx install mcp-semclone
+
+# Inject all SEMCL.ONE tool dependencies into the same isolated environment
+# This ensures all tools are available both as libraries and CLI commands
+pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+```
+
+**Benefits of pipx:**
+- ✅ Isolated environment prevents dependency conflicts
+- ✅ All tools globally accessible in PATH
+- ✅ Easy to update: `pipx upgrade mcp-semclone`
+- ✅ Clean uninstall: `pipx uninstall mcp-semclone`
+
 ### Development Installation
 
 ```bash
@@ -71,12 +94,28 @@ pip install -e .[dev]
 
 Add to your MCP client configuration file:
 
+**For pip installation:**
 ```json
 {
   "mcpServers": {
     "semclone": {
       "command": "python",
       "args": ["-m", "mcp_semclone.server"],
+      "env": {
+        "GITHUB_TOKEN": "your_github_token_optional",
+        "NVD_API_KEY": "your_nvd_api_key_optional"
+      }
+    }
+  }
+}
+```
+
+**For pipx installation:**
+```json
+{
+  "mcpServers": {
+    "semclone": {
+      "command": "mcp-semclone",
       "env": {
         "GITHUB_TOKEN": "your_github_token_optional",
         "NVD_API_KEY": "your_nvd_api_key_optional"
@@ -308,8 +347,11 @@ Use SEMCL.ONE tools directly within your AI-powered IDE for seamless OSS complia
 
 **Cursor IDE:**
 ```bash
-# 1. Install mcp-semclone
+# 1. Install mcp-semclone (choose pip or pipx)
 pip install mcp-semclone
+# OR with pipx (recommended):
+# pipx install mcp-semclone
+# pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
 
 # 2. Copy example configuration
 cp .cursor/mcp.json.example .cursor/mcp.json
@@ -319,8 +361,11 @@ cp .cursor/mcp.json.example .cursor/mcp.json
 
 **Kiro IDE:**
 ```bash
-# 1. Install mcp-semclone
+# 1. Install mcp-semclone (choose pip or pipx)
 pip install mcp-semclone
+# OR with pipx (recommended):
+# pipx install mcp-semclone
+# pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
 
 # 2. Copy example configuration
 mkdir -p ~/.kiro/settings
