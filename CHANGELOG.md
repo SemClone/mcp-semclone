@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2025-01-12
+
+### Fixed
+
+#### Improved Workflow Instructions to Prevent Single-Package Detection Issues
+
+**Problem**: Users reported that compliance checks only generated notices for 1 package instead of all transitive dependencies (e.g., 1 package instead of 48 in node_modules/).
+
+**Root Cause**: LLMs were bypassing scan_directory or not using ALL packages from the scan result. Some were manually extracting PURLs from package.json instead of using the comprehensive scan.
+
+**Changes**:
+- **Enhanced server instructions** with CRITICAL WORKFLOW RULES section
+- **Added explicit warnings** in generate_legal_notices against manual PURL extraction
+- **Added diagnostic logging** to warn when suspiciously few packages detected (≤3 packages)
+- **Improved examples** showing WRONG vs RIGHT workflow approaches
+
+**Impact**:
+- LLMs now understand to ALWAYS use scan_directory first
+- Clear guidance that npm project with 1 dependency = ~50 packages in node_modules
+- Better visibility when workflow is not followed correctly
+
+**Note**: The underlying MCP server code and purl2notices scanning work correctly. This release only improves instructions and logging to prevent workflow misunderstandings.
+
 ## [1.5.1] - 2025-01-11
 
 ### Changed
