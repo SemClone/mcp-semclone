@@ -55,7 +55,7 @@ The example shows how to:
 3. **SEMCL.ONE tools** available in PATH:
    ```bash
    # Verify tools are installed
-   which osslili binarysniffer src2purl ospac
+   which purl2notices osslili binarysniffer ospac vulnq upmex
    ```
 
 ## Installation

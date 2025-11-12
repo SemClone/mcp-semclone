@@ -56,7 +56,7 @@ By participating in this project, you agree to abide by our Code of Conduct, whi
 
 4. Install SEMCL.ONE dependencies:
    ```bash
-   pip install osslili src2purl purl2notices ospac vulnq upmex
+   pip install purl2notices osslili binarysniffer ospac vulnq upmex
    ```
 
 5. Install pre-commit hooks:

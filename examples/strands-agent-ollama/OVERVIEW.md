@@ -91,10 +91,9 @@ python agent.py /path/to/project
                    │   - generate_sbom
                    │
                    └─► SEMCL.ONE Toolchain
-                       - osslili (license detection)
+                       - purl2notices (package detection + license scanning)
+                       - osslili (archive scanning)
                        - binarysniffer (binary analysis)
-                       - src2purl (package ID)
-                       - purl2notices (legal notices)
                        - ospac (policy validation)
                        - vulnq (vulnerabilities)
                        - upmex (metadata)

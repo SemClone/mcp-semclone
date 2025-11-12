@@ -26,7 +26,7 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
    pipx install mcp-semclone
 
    # IMPORTANT: Install all CLI dependencies - required by some agents
-   pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+   pipx inject mcp-semclone purl2notices osslili binarysniffer ospac vulnq upmex
    ```
 
    **Option B: Using pip**:
