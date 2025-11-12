@@ -37,12 +37,26 @@ mcp = FastMCP(
     name="mcp-semclone",
     instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
 
-WORKFLOW PATTERNS:
-1. Scan-first approach: Use scan_directory with purl2notices to discover everything (licenses, packages, copyrights)
-2. Tool execution order: scan (purl2notices) → vulnerabilities (vulnq) → policy validation (ospac)
-3. purl2notices automatically detects ALL packages including transitive dependencies (not just package.json!)
-4. For npm projects: Scans entire node_modules/ (~50+ packages), not just direct dependencies
-5. Copyright extraction is automatic - no separate step needed
+CRITICAL WORKFLOW RULES:
+1. **ALWAYS scan_directory FIRST**: Never manually extract PURLs from package.json or requirements.txt
+   - For npm projects: scan_directory detects ~50+ packages from node_modules/, NOT just 1-2 from package.json
+   - For Python projects: Detects all packages from site-packages/, NOT just requirements.txt
+   - WRONG: Reading package.json and calling generate_legal_notices with http-server@14.1.1
+   - RIGHT: Call scan_directory → Use ALL packages from result → Pass to generate_legal_notices
+
+2. **Use ALL packages from scan_directory**: The packages array contains ALL transitive dependencies
+   - scan_directory returns complete package list with PURLs
+   - Pass the ENTIRE packages array to generate_legal_notices
+   - Do NOT filter to only direct dependencies
+
+3. **Tool execution order**: scan_directory (purl2notices) → generate_legal_notices → validate_policy
+   - scan_directory discovers everything (50+ packages, licenses, copyrights)
+   - generate_legal_notices creates NOTICE file from ALL discovered packages
+   - validate_policy checks licenses for compatibility
+
+4. **Shortcut for complete workflow**: Use run_compliance_check() - it does everything in one call
+   - Internally calls scan_directory → generate_legal_notices → validate_policy → generate_sbom
+   - Returns approval decision and creates all artifacts
 
 INTERPRETING LICENSE DATA FROM OSPAC:
 When analyzing license obligations and requirements, use these OSPAC fields to derive implications:
@@ -592,6 +606,14 @@ async def scan_directory(
 
                 # Store results
                 result.packages = packages
+
+                # Warn if suspiciously few packages detected (likely scanning issue)
+                if len(packages) <= 3 and recursive:
+                    logger.warning(
+                        f"Only {len(packages)} package(s) detected. This seems low for a typical project. "
+                        f"Expected ~50+ packages for npm projects with node_modules/. "
+                        f"Verify that purl2notices scanned recursively with -r flag."
+                    )
 
                 # Convert licenses to expected format
                 result.licenses = [
@@ -1462,6 +1484,12 @@ async def generate_legal_notices(
     Powered by purl2notices - automatically extracts copyright holders, fetches license texts
     from SPDX, and formats production-ready NOTICE files.
 
+    ⚠️ CRITICAL: DO NOT manually extract PURLs from package.json/requirements.txt!
+    ALWAYS get PURLs from scan_directory() which detects ALL transitive dependencies.
+    - WRONG: Reading package.json, extracting "http-server@14.1.1", calling this tool with 1 PURL
+    - RIGHT: Call scan_directory() → Extract ALL PURLs from packages array → Pass to this tool
+    - Example: npm project with 1 dependency = ~50 packages in node_modules (all needed for notices)
+
     PURPOSE:
     Creates production-ready legal compliance documentation including:
     - Complete copyright holder attributions (auto-extracted)
@@ -1483,6 +1511,7 @@ async def generate_legal_notices(
     - Just checking license compatibility → use check_license_compatibility
     - Quick validation only → use validate_license_list
     - Want one-shot complete workflow → use run_compliance_check
+    - DON'T have PURLs yet → use scan_directory FIRST to get them
 
     WORKFLOW POSITION:
     Typically used AFTER scan_directory/check_package and validation (validate_license_list),
@@ -2084,7 +2113,14 @@ async def run_compliance_check(
         license_ids = list(set([lic.get("spdx_id") for lic in licenses if lic.get("spdx_id")]))
         purls = [pkg.get("purl") for pkg in packages if pkg.get("purl")]
 
-        logger.info(f"Found {len(license_ids)} unique licenses, {len(purls)} packages")
+        logger.info(f"✓ Scan complete: {len(purls)} packages, {len(license_ids)} unique licenses")
+
+        # Warn if too few packages detected
+        if len(purls) <= 3:
+            logger.warning(
+                f"⚠️  Only {len(purls)} package(s) detected! This seems low for a typical project. "
+                f"Expected ~50+ packages for npm projects. Check if node_modules/ exists."
+            )
 
         # STEP 2: Generate legal notices
         logger.info("Step 2/5: Generating legal notices with purl2notices...")
