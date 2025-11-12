@@ -21,19 +21,26 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_scan_directory_success(self):
         """Test successful directory scan."""
-        with patch("mcp_semclone.server._run_tool") as mock_run:
-            # Mock osslili output (first call)
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout='{"scan_results": []}'
-            )
+        # Mock purl2notices JSON output
+        purl2notices_output = {
+            "metadata": {"total_packages": 0},
+            "licenses": []
+        }
 
-            with patch("pathlib.Path.exists", return_value=True):
-                result = await server_module.scan_directory(
-                    "/test",
-                    check_licenses=False,
-                    check_vulnerabilities=False
-                )
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("json.load", return_value=purl2notices_output), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.unlink"), \
+             patch("tempfile.NamedTemporaryFile"), \
+             patch("pathlib.Path.exists", return_value=True):
+
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+
+            result = await server_module.scan_directory(
+                "/test",
+                check_licenses=False,
+                check_vulnerabilities=False
+            )
 
             assert "licenses" in result
             assert "metadata" in result
@@ -50,15 +57,34 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_scan_directory_with_licenses(self):
         """Test directory scan with license detection."""
-        with patch("mcp_semclone.server._run_tool") as mock_run:
-            # Mock osslili output with license evidence
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout='{"scan_results": [{"license_evidence": [{"detected_license": "MIT", "file": "/test/LICENSE", "confidence": 0.99, "category": "declared"}]}]}'
-            )
+        # Mock purl2notices JSON output with MIT license
+        purl2notices_output = {
+            "metadata": {"total_packages": 1},
+            "licenses": [
+                {
+                    "id": "MIT",
+                    "packages": [
+                        {
+                            "name": "test-pkg",
+                            "version": "1.0.0",
+                            "purl": "pkg:npm/test-pkg@1.0.0"
+                        }
+                    ],
+                    "copyrights": ["Copyright Test Author"]
+                }
+            ]
+        }
 
-            with patch("pathlib.Path.exists", return_value=True):
-                result = await server_module.scan_directory("/test", check_vulnerabilities=False)
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("json.load", return_value=purl2notices_output), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.unlink"), \
+             patch("tempfile.NamedTemporaryFile"), \
+             patch("pathlib.Path.exists", return_value=True):
+
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+
+            result = await server_module.scan_directory("/test", check_vulnerabilities=False)
 
             assert "licenses" in result
             assert len(result["licenses"]) == 1
@@ -67,15 +93,34 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_scan_directory_with_vulnerabilities(self):
         """Test directory scan with vulnerability checking."""
-        with patch("mcp_semclone.server._run_tool") as mock_run:
-            # Mock osslili output only (vulnerabilities require separate package analysis)
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout='{"scan_results": []}'
-            )
+        # Mock purl2notices JSON output with packages for vulnerability checking
+        purl2notices_output = {
+            "metadata": {"total_packages": 2},
+            "licenses": [
+                {
+                    "id": "Apache-2.0",
+                    "packages": [
+                        {
+                            "name": "vuln-test-pkg",
+                            "version": "2.5.0",
+                            "purl": "pkg:npm/vuln-test-pkg@2.5.0"
+                        }
+                    ],
+                    "copyrights": ["Copyright Apache Foundation"]
+                }
+            ]
+        }
 
-            with patch("pathlib.Path.exists", return_value=True):
-                result = await server_module.scan_directory("/test", check_licenses=False)
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("json.load", return_value=purl2notices_output), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.unlink"), \
+             patch("tempfile.NamedTemporaryFile"), \
+             patch("pathlib.Path.exists", return_value=True):
+
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+
+            result = await server_module.scan_directory("/test", check_licenses=False)
 
             assert "licenses" in result
             assert "metadata" in result

@@ -38,10 +38,11 @@ mcp = FastMCP(
     instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
 
 WORKFLOW PATTERNS:
-1. License-first approach: Always scan for licenses before identifying packages or vulnerabilities
-2. Tool execution order: licenses (osslili) → packages (src2purl) → vulnerabilities (vulnq) → policy validation (ospac)
-3. Package identification is optional and only required when checking vulnerabilities or generating detailed SBOMs
-4. Vulnerability checks automatically trigger package identification if not already performed
+1. Scan-first approach: Use scan_directory with purl2notices to discover everything (licenses, packages, copyrights)
+2. Tool execution order: scan (purl2notices) → vulnerabilities (vulnq) → policy validation (ospac)
+3. purl2notices automatically detects ALL packages including transitive dependencies (not just package.json!)
+4. For npm projects: Scans entire node_modules/ (~50+ packages), not just direct dependencies
+5. Copyright extraction is automatic - no separate step needed
 
 INTERPRETING LICENSE DATA FROM OSPAC:
 When analyzing license obligations and requirements, use these OSPAC fields to derive implications:
@@ -243,7 +244,7 @@ TOOL SELECTION GUIDE:
 - scan_binary: Use for truly compiled binaries, firmware, and mobile apps. Uses BinarySniffer for signature-based component detection. Best for executables and native libraries.
 
 **For Source Code Directories:**
-- scan_directory: Primary tool for analyzing projects/codebases. Performs comprehensive license inventory with osslili, optional package identification, and vulnerability assessment.
+- scan_directory: Primary tool for analyzing projects/codebases. Uses purl2notices scan mode to detect all packages (including transitive deps), extract licenses, and identify copyright holders.
 
 **Detailed Tool Descriptions:**
 - check_package: Intelligent package analyzer that automatically selects the best extraction method:
@@ -259,10 +260,11 @@ TOOL SELECTION GUIDE:
   * Note: Slower than check_package for archives; prefer check_package for .jar, .whl, etc.
 
 - scan_directory: Comprehensive source code analysis:
-  * License inventory via osslili (fast, thorough)
-  * Optional package identification via src2purl
-  * Optional vulnerability scanning (first 10 packages)
+  * Scanning via purl2notices (licenses, packages, copyrights - all in one!)
+  * Detects ALL packages including transitive dependencies (entire node_modules/, not just package.json)
+  * Optional vulnerability scanning (all detected packages)
   * Use for: Git repositories, source directories, projects with build files
+  * NO manual PURL extraction needed - automatically scans dependencies
 
 - validate_policy: **PRIMARY tool for license approve/reject decisions**
   * Evaluates licenses against organizational policies for specific distribution types
@@ -338,7 +340,8 @@ RESOURCE ACCESS:
 ERROR HANDLING:
 - Tools return {"error": "message"} on failures
 - Non-zero exit codes are logged but don't always indicate failure (check returned data)
-- Missing CLI tools (src2purl, osslili, vulnq, ospac) will raise FileNotFoundError"""
+- Missing CLI tools (purl2notices, vulnq, ospac, binarysniffer) will raise FileNotFoundError
+- scan_directory uses purl2notices for comprehensive scanning (no longer uses osslili or src2purl)"""
 )
 
 # Tool auto-detection cache to avoid repeated lookups
@@ -440,23 +443,35 @@ async def scan_directory(
     identify_packages: bool = False,
     policy_file: Optional[str] = None
 ) -> Dict[str, Any]:
-    """FIRST STEP: Scan a directory for compliance issues using osslili-first approach.
+    """FIRST STEP: Scan a directory for compliance issues using purl2notices.
 
     This is typically the FIRST tool you should use when analyzing a project.
     Use this to discover what's in your project before validation or documentation generation.
 
     PURPOSE:
-    - Inventory all licenses in source code (using osslili)
-    - Identify package coordinates/PURLs (using src2purl)
+    - Scan project source code for licenses (using purl2notices)
+    - Detect ALL packages including transitive dependencies (scans node_modules/, site-packages/, vendor/)
+    - Extract copyright statements from source code
     - Check for vulnerabilities (using vulnq)
     - Validate against policy (using ospac)
+
+    WHAT purl2notices DETECTS:
+    - Project source licenses (from your own code)
+    - Dependency packages (ALL packages in node_modules/, not just package.json)
+    - Package licenses (from dependency source code)
+    - Copyright holders (extracted from actual source files)
+
+    IMPORTANT: This tool scans the ENTIRE dependency tree:
+    - For npm projects: All 50+ packages in node_modules/ (not just the 1-2 in package.json)
+    - For Python projects: All packages in site-packages/ or virtualenv
+    - Includes transitive dependencies automatically
 
     WHEN TO USE:
     - Starting compliance analysis for a new project (FIRST STEP)
     - Need to discover all licenses in source code
-    - Want to identify all package dependencies
+    - Want to identify all package dependencies (including transitive)
     - Beginning vulnerability assessment
-    - Need comprehensive project analysis
+    - Need comprehensive project analysis with copyright attribution
 
     WHEN NOT TO USE:
     - Already have PURLs and just need legal notices → use generate_legal_notices directly
@@ -470,9 +485,9 @@ async def scan_directory(
 
     TYPICAL NEXT STEPS:
     1. For mobile apps:
-       scan_directory(check_vulnerabilities=True, identify_packages=True)
+       scan_directory(check_vulnerabilities=True)
        → validate_license_list(distribution="mobile")
-       → generate_legal_notices(purls=[...])
+       → generate_legal_notices(purls=scan_result["packages"])
 
     2. For vulnerability assessment:
        scan_directory(check_vulnerabilities=True)
@@ -480,30 +495,31 @@ async def scan_directory(
        → check specific packages with check_package for details
 
     3. For documentation:
-       scan_directory(identify_packages=True)
-       → generate_legal_notices(purls=[...])
+       scan_directory()
+       → generate_legal_notices(purls=scan_result["packages"])
        → generate_sbom(path=".")
 
-    IMPORTANT PARAMETERS:
-    - identify_packages=True: Required if you need PURLs for generate_legal_notices
-    - check_vulnerabilities=True: Automatically enables package identification
-    - check_licenses=True: Default, inventories all licenses (primary goal)
+    IMPORTANT NOTES:
+    - identify_packages parameter is deprecated (purl2notices always detects packages)
+    - check_vulnerabilities=True: Checks all detected packages for CVEs
+    - check_licenses parameter is deprecated (purl2notices always scans licenses)
+    - Scans recursively by default (max depth 3 into node_modules/)
 
     Args:
         path: Directory or file path to scan
-        recursive: Enable recursive scanning (default: True)
-        check_vulnerabilities: Check for vulnerabilities (requires package identification)
-        check_licenses: Scan for license information using osslili (default: True)
-        identify_packages: Use src2purl to identify upstream package coordinates
+        recursive: Enable recursive scanning (default: True, max depth 3)
+        check_vulnerabilities: Check for vulnerabilities in detected packages
+        check_licenses: (Deprecated - always True) Scan for licenses
+        identify_packages: (Deprecated - always True) Detect packages
         policy_file: Optional policy file for license compliance validation
 
     Returns:
         Dictionary containing:
-        - licenses: List of detected licenses with evidence
-        - packages: List of identified packages with PURLs (if identify_packages=True)
+        - licenses: List of detected licenses from project and dependencies
+        - packages: List of ALL detected packages with PURLs (includes transitive deps)
         - vulnerabilities: List of vulnerabilities (if check_vulnerabilities=True)
         - policy_violations: Policy violations (if policy_file provided)
-        - metadata: Summary information including counts
+        - metadata: Summary information including copyright holders and counts
     """
     result = ScanResult()
     path_obj = Path(path)
@@ -512,59 +528,92 @@ async def scan_directory(
         return {"error": f"Path does not exist: {path}"}
 
     try:
-        # Step 1: ALWAYS inventory licenses first (primary goal)
-        logger.info(f"Inventorying licenses in {path}")
-        osslili_args = [str(path), "--output-format", "evidence"]
-        if recursive:
-            osslili_args.extend(["--max-depth", "10"])
+        # Use purl2notices scan mode with JSON format for comprehensive scanning
+        # This detects ALL packages including transitive dependencies
+        logger.info(f"Scanning {path} with purl2notices")
 
-        osslili_result = _run_tool("osslili", osslili_args)
-        if osslili_result.returncode == 0 and osslili_result.stdout:
-            # Parse osslili output - skip info lines and find JSON
-            stdout_lines = osslili_result.stdout.split('\n')
-            json_start = -1
-            for i, line in enumerate(stdout_lines):
-                if line.strip().startswith('{'):
-                    json_start = i
-                    break
+        # Create temporary output file for JSON results
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_json:
+            temp_json_path = temp_json.name
 
-            if json_start >= 0:
-                json_text = '\n'.join(stdout_lines[json_start:]).strip()
-                licenses_data = json.loads(json_text)
+        try:
+            # Run purl2notices in scan mode with JSON output
+            purl2notices_args = [
+                "-i", str(path),
+                "-m", "scan",
+                "-f", "json",  # JSON format includes packages, licenses, copyrights
+                "-o", temp_json_path,
+                "--continue-on-error",
+                "--no-cache"  # Don't use cache in MCP server
+            ]
 
-                # Extract license evidence and convert to expected format
-                license_evidence = []
-                copyright_info = []
+            if recursive:
+                purl2notices_args.extend(["-r", "--max-depth", "3"])
 
-                for scan_result in licenses_data.get("scan_results", []):
-                    # Extract license evidence
-                    for evidence in scan_result.get("license_evidence", []):
-                        license_evidence.append({
-                            "spdx_id": evidence.get("detected_license"),
-                            "file": evidence.get("file"),
-                            "confidence": evidence.get("confidence"),
-                            "method": evidence.get("detection_method"),
-                            "category": evidence.get("category"),
-                            "description": evidence.get("description")
-                        })
+            # Run purl2notices scan
+            scan_result_output = _run_tool("purl2notices", purl2notices_args)
 
-                    # Extract copyright information
-                    for copyright_evidence in scan_result.get("copyright_evidence", []):
-                        copyright_info.append({
-                            "holder": copyright_evidence.get("holder"),
-                            "year": copyright_evidence.get("year"),
-                            "statement": copyright_evidence.get("statement"),
-                            "file": copyright_evidence.get("file"),
-                            "confidence": copyright_evidence.get("confidence", "high")
-                        })
+            # Read the JSON output file
+            if os.path.exists(temp_json_path):
+                with open(temp_json_path, 'r') as f:
+                    scan_data = json.load(f)
 
-                result.licenses = license_evidence
+                # Extract packages and licenses from JSON output
+                packages = []
+                licenses_found = {}  # Map license ID to files
+                copyright_holders = set()
 
-                # Add copyright information to metadata if found
-                if copyright_info:
-                    result.metadata["copyright_holders"] = list(set([c["holder"] for c in copyright_info if c.get("holder")]))
-                    result.metadata["copyright_info"] = copyright_info
-                    result.metadata["copyrights_found"] = len(copyright_info)
+                # Parse licenses array from purl2notices JSON
+                for license_group in scan_data.get("licenses", []):
+                    license_id = license_group.get("id")
+
+                    # Extract packages under this license
+                    for pkg_data in license_group.get("packages", []):
+                        purl = pkg_data.get("purl")
+                        if purl:  # Skip _sources entries without PURL
+                            packages.append({
+                                "purl": purl,
+                                "name": pkg_data.get("name"),
+                                "version": pkg_data.get("version"),
+                                "confidence": 1.0,
+                                "upstream_license": license_id,
+                                "match_type": "detected",
+                                "official": True
+                            })
+
+                    # Collect license IDs
+                    if license_id:
+                        licenses_found[license_id] = True
+
+                    # Collect copyright holders
+                    for copyright_stmt in license_group.get("copyrights", []):
+                        if copyright_stmt:
+                            copyright_holders.add(copyright_stmt)
+
+                # Store results
+                result.packages = packages
+
+                # Convert licenses to expected format
+                result.licenses = [
+                    {
+                        "spdx_id": license_id,
+                        "confidence": 1.0,
+                        "method": "purl2notices_scan",
+                        "category": "detected",
+                        "description": f"Detected by purl2notices scan"
+                    }
+                    for license_id in licenses_found.keys()
+                ]
+
+                # Add copyright information to metadata
+                if copyright_holders:
+                    result.metadata["copyright_holders"] = list(copyright_holders)
+                    result.metadata["copyrights_found"] = len(copyright_holders)
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_json_path):
+                os.unlink(temp_json_path)
 
         # Step 2: Validate against policy if provided
         if check_licenses and policy_file and result.licenses:
@@ -586,43 +635,7 @@ async def scan_directory(
                             "action": result_data.get("action")
                         }]
 
-        # Step 3: Only identify upstream repository coordinates if explicitly requested
-        # This provides official package coordinates for vulnerability and guidance lookup
-        if identify_packages or check_vulnerabilities:
-            logger.info(f"Identifying upstream coordinates for {path}")
-            src2purl_args = [str(path), "--output-format", "json", "--enable-fuzzy"]
-            if recursive:
-                src2purl_args.extend(["--max-depth", "5"])
-
-            src2purl_result = _run_tool("src2purl", src2purl_args)
-            if src2purl_result.returncode == 0 and src2purl_result.stdout:
-                # Parse src2purl JSON output correctly
-                stdout_lines = src2purl_result.stdout.split('\n')
-                json_start = -1
-                for i, line in enumerate(stdout_lines):
-                    if line.strip().startswith('{'):
-                        json_start = i
-                        break
-
-                if json_start >= 0:
-                    json_text = '\n'.join(stdout_lines[json_start:]).strip()
-                    packages_data = json.loads(json_text)
-                    # Convert src2purl format to expected format
-                    packages = []
-                    for match in packages_data.get("matches", []):
-                        packages.append({
-                            "purl": match.get("purl"),
-                            "name": match.get("name"),
-                            "version": match.get("version"),
-                            "confidence": match.get("confidence"),
-                            "upstream_license": match.get("license"),
-                            "match_type": match.get("type"),
-                            "url": match.get("url"),
-                            "official": match.get("official", False)
-                        })
-                    result.packages = packages
-
-        # Step 4: Only check vulnerabilities if requested and packages are available
+        # Step 3: Only check vulnerabilities if requested and packages are available
         if check_vulnerabilities and result.packages:
             logger.info("Cross-referencing upstream coordinates with vulnerability databases")
             vulnerabilities = []
@@ -1720,7 +1733,7 @@ async def generate_sbom(
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "tools": [{
                         "name": "mcp-semclone",
-                        "version": "1.4.0"
+                        "version": "1.5.1"
                     }],
                     "component": {
                         "type": "application",
@@ -1752,7 +1765,7 @@ async def generate_sbom(
                 "documentNamespace": f"https://semcl.one/sbom/{sbom_name}",
                 "creationInfo": {
                     "created": datetime.datetime.utcnow().isoformat() + "Z",
-                    "creators": ["Tool: mcp-semclone-1.4.0"]
+                    "creators": ["Tool: mcp-semclone-1.5.1"]
                 },
                 "packages": []
             }
