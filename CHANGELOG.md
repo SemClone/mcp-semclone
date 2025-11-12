@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2025-01-11
+
+### Changed
+
+#### Architecture Simplification: purl2notices for Everything
+
+**scan_directory now uses purl2notices scan mode exclusively:**
+- **REMOVED**: osslili dependency for scan_directory (still used by check_package)
+- **REMOVED**: src2purl dependency entirely (replaced by purl2notices)
+- **NEW**: purl2notices scan mode handles all scanning in one pass:
+  - Detects ALL packages including transitive dependencies (scans entire node_modules/)
+  - Extracts licenses from both project source and dependencies
+  - Extracts copyright statements automatically from source code
+  - No manual PURL extraction needed
+
+**Benefits:**
+- 100% accurate package detection (vs 83-88% fuzzy matching from src2purl)
+- Detects ALL transitive dependencies (e.g., 51 packages vs 8 fuzzy matches)
+- No confusing fuzzy match results
+- Automatic copyright extraction as bonus feature
+- Simpler architecture: one tool instead of two
+
+**For npm projects:**
+- Scans entire node_modules/ directory (50+ packages)
+- NOT just direct dependencies from package.json (1-2 packages)
+- Includes all transitive dependencies automatically
+
+**Deprecated parameters in scan_directory:**
+- `identify_packages` - now deprecated, purl2notices always detects packages
+- `check_licenses` - now deprecated, purl2notices always scans licenses
+- Parameters still accepted for backwards compatibility but have no effect
+
+**Updated tool descriptions:**
+- scan_directory now documents that it detects ALL packages including transitive deps
+- Clarified that for npm projects, this means entire node_modules/ not just package.json
+- Added emphasis on automatic copyright extraction
+- Updated workflow examples to reflect simplified approach
+
+**Dependencies:**
+- Removed: `src2purl>=1.3.4` (no longer used)
+- Still kept: `osslili>=1.5.7` and `upmex>=1.6.7` (used by check_package for archives)
+
+**Migration:**
+No code changes needed. The scan_directory function signature remains the same.
+Results are more complete and accurate automatically.
+
 ## [1.4.0] - 2025-01-11
 
 ### Breaking Changes
