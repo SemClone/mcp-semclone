@@ -528,12 +528,8 @@ async def scan_directory(
         return {"error": f"Path does not exist: {path}"}
 
     try:
-        # Use purl2notices scan mode for EVERYTHING:
-        # - Detects packages from node_modules/, site-packages/, vendor/
-        # - Extracts licenses from both project source and dependencies
-        # - Extracts copyright statements from source code
-        # No need for osslili or src2purl!
-
+        # Use purl2notices scan mode with JSON format for comprehensive scanning
+        # This detects ALL packages including transitive dependencies
         logger.info(f"Scanning {path} with purl2notices")
 
         # Create temporary output file for JSON results
@@ -541,13 +537,14 @@ async def scan_directory(
             temp_json_path = temp_json.name
 
         try:
-            # Run purl2notices in scan mode
+            # Run purl2notices in scan mode with JSON output
             purl2notices_args = [
                 "-i", str(path),
                 "-m", "scan",
-                "-f", "json",
+                "-f", "json",  # JSON format includes packages, licenses, copyrights
                 "-o", temp_json_path,
-                "--continue-on-error"
+                "--continue-on-error",
+                "--no-cache"  # Don't use cache in MCP server
             ]
 
             if recursive:
@@ -561,37 +558,37 @@ async def scan_directory(
                 with open(temp_json_path, 'r') as f:
                     scan_data = json.load(f)
 
-                # Extract packages from scan results
+                # Extract packages and licenses from JSON output
                 packages = []
-                licenses_found = set()
-                copyright_info = []
+                licenses_found = {}  # Map license ID to files
+                copyright_holders = set()
 
-                for pkg_data in scan_data.get("packages", []):
-                    purl = pkg_data.get("purl")
-                    if purl:
-                        # Extract package info
-                        packages.append({
-                            "purl": purl,
-                            "name": pkg_data.get("name"),
-                            "version": pkg_data.get("version"),
-                            "confidence": 1.0,  # purl2notices gives accurate results
-                            "upstream_license": pkg_data.get("license"),
-                            "match_type": "detected",  # Not fuzzy matching!
-                            "official": True  # From actual package manifests
-                        })
+                # Parse licenses array from purl2notices JSON
+                for license_group in scan_data.get("licenses", []):
+                    license_id = license_group.get("id")
 
-                        # Extract licenses
-                        if pkg_data.get("license"):
-                            licenses_found.add(pkg_data["license"])
-
-                        # Extract copyrights
-                        for copyright_stmt in pkg_data.get("copyrights", []):
-                            copyright_info.append({
-                                "holder": copyright_stmt.get("holder"),
-                                "statement": copyright_stmt.get("statement"),
-                                "file": copyright_stmt.get("file"),
-                                "confidence": "high"
+                    # Extract packages under this license
+                    for pkg_data in license_group.get("packages", []):
+                        purl = pkg_data.get("purl")
+                        if purl:  # Skip _sources entries without PURL
+                            packages.append({
+                                "purl": purl,
+                                "name": pkg_data.get("name"),
+                                "version": pkg_data.get("version"),
+                                "confidence": 1.0,
+                                "upstream_license": license_id,
+                                "match_type": "detected",
+                                "official": True
                             })
+
+                    # Collect license IDs
+                    if license_id:
+                        licenses_found[license_id] = True
+
+                    # Collect copyright holders
+                    for copyright_stmt in license_group.get("copyrights", []):
+                        if copyright_stmt:
+                            copyright_holders.add(copyright_stmt)
 
                 # Store results
                 result.packages = packages
@@ -605,14 +602,13 @@ async def scan_directory(
                         "category": "detected",
                         "description": f"Detected by purl2notices scan"
                     }
-                    for license_id in licenses_found
+                    for license_id in licenses_found.keys()
                 ]
 
                 # Add copyright information to metadata
-                if copyright_info:
-                    result.metadata["copyright_holders"] = list(set([c["holder"] for c in copyright_info if c.get("holder")]))
-                    result.metadata["copyright_info"] = copyright_info
-                    result.metadata["copyrights_found"] = len(copyright_info)
+                if copyright_holders:
+                    result.metadata["copyright_holders"] = list(copyright_holders)
+                    result.metadata["copyrights_found"] = len(copyright_holders)
 
         finally:
             # Clean up temp file
@@ -639,7 +635,7 @@ async def scan_directory(
                             "action": result_data.get("action")
                         }]
 
-        # Step 4: Only check vulnerabilities if requested and packages are available
+        # Step 3: Only check vulnerabilities if requested and packages are available
         if check_vulnerabilities and result.packages:
             logger.info("Cross-referencing upstream coordinates with vulnerability databases")
             vulnerabilities = []
