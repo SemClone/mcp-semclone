@@ -54,9 +54,8 @@ This guide demonstrates how to use the SEMCL.ONE MCP (Model Context Protocol) se
 ### 2. License Inventory and SBOM Generation
 
 **MCP Workflow**:
-1. `scan_directory` - Detect all licenses using osslili
-2. `src2purl` integration - Identify package coordinates
-3. `generate_sbom` - Create Software Bill of Materials
+1. `scan_directory` - Comprehensive package detection and license scanning using purl2notices
+2. `generate_sbom` - Create Software Bill of Materials with identified packages
 
 **Output**: SPDX-compatible SBOM with package URLs (PURLs) and license information.
 
@@ -89,10 +88,11 @@ This guide demonstrates how to use the SEMCL.ONE MCP (Model Context Protocol) se
 - `recommendations`: Actionable next steps
 
 #### `scan_directory(path, check_licenses=True, check_vulnerabilities=False)`
-**Purpose**: License-first compliance scanning using osslili and src2purl
+**Purpose**: Comprehensive compliance scanning using purl2notices for package detection, license scanning, and copyright extraction
 **Returns**:
 - `licenses`: Detected license evidence with confidence scores
-- `packages`: Discovered package coordinates (PURLs)
+- `packages`: All discovered packages including transitive dependencies (PURLs)
+- `copyrights`: Extracted copyright statements from source
 - `metadata`: Summary statistics
 
 #### `generate_sbom(path, format="spdx")`
@@ -127,13 +127,12 @@ This guide demonstrates how to use the SEMCL.ONE MCP (Model Context Protocol) se
 
 ## License-First Methodology
 
-The SEMCL.ONE approach prioritizes license detection before package identification:
+The SEMCL.ONE approach performs comprehensive scanning in a single pass:
 
-1. **License Inventory** (osslili) - Scan source code for license evidence
-2. **Package Identification** (src2purl) - Map code to upstream coordinates
+1. **Comprehensive Scanning** (purl2notices) - Detect packages, licenses, and copyrights in one pass
+2. **Risk Assessment** - Evaluate commercial compatibility using ospac
 3. **Cross-Reference** - Correlate licenses with package metadata
-4. **Risk Assessment** - Evaluate commercial compatibility
-5. **Documentation** - Generate compliance artifacts
+4. **Documentation** - Generate compliance artifacts (SBOM, legal notices)
 
 ## Risk Assessment Matrix
 
@@ -218,7 +217,7 @@ async def check_mobile_safety(project_path):
 ### Common Issues
 
 #### "Tool not found" Errors
-- Ensure all SEMCL.ONE tools are installed: `pip install osslili src2purl ospac vulnq`
+- Ensure all SEMCL.ONE tools are installed: `pip install purl2notices osslili ospac vulnq binarysniffer upmex`
 - Check PATH configuration
 
 #### "No licenses detected"

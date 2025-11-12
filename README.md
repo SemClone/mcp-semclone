@@ -49,13 +49,12 @@ pip install mcp-semclone
 ```
 
 This automatically installs all required SEMCL.ONE tools:
-- **osslili** - License detection from source code
+- **purl2notices** - Comprehensive package detection and license extraction
+- **osslili** - License detection from archives (used by check_package)
 - **binarysniffer** - Binary analysis for OSS components
-- **src2purl** - Package discovery and PURL generation
-- **purl2notices** - License notices extraction
 - **ospac** - Policy validation engine
 - **vulnq** - Vulnerability database queries
-- **upmex** - Package metadata extraction
+- **upmex** - Package metadata extraction (used by check_package)
 
 ### Pipx Installation (Recommended for Global Access)
 
@@ -72,7 +71,7 @@ pipx install mcp-semclone
 # IMPORTANT: Inject all SEMCL.ONE tool dependencies into the same isolated environment
 # This ensures all tools are available both as libraries and CLI commands
 # Required by some agents that need direct CLI tool access
-pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+pipx inject mcp-semclone purl2notices osslili binarysniffer ospac vulnq upmex
 ```
 
 **Benefits of pipx:**
@@ -138,12 +137,11 @@ export NVD_API_KEY="your_nvd_api_key"
 
 # Tool paths (optional, only if tools are not in PATH)
 # Tools are auto-detected by default using shutil.which()
+export PURL2NOTICES_PATH="/custom/path/to/purl2notices"
 export OSSLILI_PATH="/custom/path/to/osslili"
 export BINARYSNIFFER_PATH="/custom/path/to/binarysniffer"
-export SRC2PURL_PATH="/custom/path/to/src2purl"
 export VULNQ_PATH="/custom/path/to/vulnq"
 export OSPAC_PATH="/custom/path/to/ospac"
-export PURL2NOTICES_PATH="/custom/path/to/purl2notices"
 export UPMEX_PATH="/custom/path/to/upmex"
 ```
 
@@ -233,9 +231,9 @@ asyncio.run(main())
 ## Architecture
 
 ```
-┌─────────────┐
+┌─────────────────┐
 │   LLM Client    │
-│  (MCP Client)    │
+│  (MCP Client)   │
 └────────┬────────┘
          │ MCP Protocol
 ┌────────▼────────┐
@@ -243,15 +241,16 @@ asyncio.run(main())
 │   MCP Server    │
 └────────┬────────┘
          │ Subprocess calls
-┌────────▼────────────────────┐
-│     SEMCL.ONE Toolchain     │
-├──────────────────────────────┤
-│ osslili  │ License detection │
-│ src2purl │ Package discovery │
-│ vulnq    │ Vulnerability DB  │
-│ ospac    │ Policy engine     │
-│ upmex    │ Metadata extract  │
-└──────────────────────────────┘
+┌────────▼──────────────────────────┐
+│      SEMCL.ONE Toolchain          │
+├────────────────────────────────────┤
+│ purl2notices │ Package + License  │
+│ osslili      │ Archive scanning   │
+│ binarysniffer│ Binary analysis    │
+│ vulnq        │ Vulnerability DB   │
+│ ospac        │ Policy engine      │
+│ upmex        │ Metadata extract   │
+└────────────────────────────────────┘
 ```
 
 ## Server Instructions for LLMs
@@ -288,12 +287,12 @@ This enables LLMs to automatically choose the right tool combination, optimize p
 
 The MCP server orchestrates multiple SEMCL.ONE tools:
 
-1. **src2purl**: Identifies packages from source files
-2. **osslili**: Detects licenses in code and documentation
-3. **vulnq**: Queries vulnerability databases (OSV, GitHub, NVD)
-4. **ospac**: Validates licenses against policies
-5. **purl2notices**: Extracts license notices and copyright
-6. **upmex**: Extracts package metadata from manifests
+1. **purl2notices**: Comprehensive package detection, license scanning, and copyright extraction (primary scanning tool)
+2. **osslili**: License detection in archives and compressed files (used by check_package)
+3. **binarysniffer**: Binary analysis for compiled artifacts (APK, EXE, DLL, SO, JAR)
+4. **vulnq**: Queries vulnerability databases (OSV, GitHub, NVD)
+5. **ospac**: Validates licenses against policies
+6. **upmex**: Extracts package metadata from manifests (used by check_package)
 
 ## Examples
 
@@ -351,7 +350,7 @@ Use SEMCL.ONE tools directly within your AI-powered IDE for seamless OSS complia
 1. **Install mcp-semclone** with pipx (recommended):
    ```bash
    pipx install mcp-semclone
-   pipx inject mcp-semclone osslili binarysniffer src2purl purl2notices ospac vulnq upmex
+   pipx inject mcp-semclone purl2notices osslili binarysniffer ospac vulnq upmex
    ```
 
 2. **Configure your IDE** - Add MCP server configuration (see guide for IDE-specific paths)
