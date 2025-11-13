@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.4] - 2025-01-13
+
+### Changed
+
+#### Server Instructions: Prevent External Tool Installation
+
+**Added prominent warning to prevent LLMs from installing external compliance tools:**
+- Added "IMPORTANT - ALL TOOLS ARE BUILT-IN" section at top of server instructions
+- Explicitly warns against installing: npm license-checker, scancode-toolkit, ngx, fossil, etc.
+- Clarifies that all necessary tools (purl2notices, ossnotices, osslili, ospac, vulnq) are pre-installed
+- Directs LLMs to use MCP-provided tools instead of trying to install external packages
+
+**Why this matters:**
+- Prevents LLMs from wasting time trying to install tools that are already available
+- Avoids confusion about which tools to use (use MCP tools, not external CLIs)
+- Reduces risk of LLMs using outdated or incorrect external tools
+- Ensures consistent compliance scanning using the SEMCL.ONE toolchain
+
+**User Impact:**
+- Faster response times (no unnecessary tool installation attempts)
+- More reliable results (always uses the correct, pre-installed tools)
+- Clearer guidance for LLMs on how to perform compliance tasks
+
+## [1.5.3] - 2025-01-12
+
+### Added
+
+- **ossnotices** dependency (v1.0.2+) as wrapper for purl2notices
+
+### Changed
+
+#### SBOM Generation: Focus on CycloneDX using purl2notices
+
+**Simplified SBOM generation to focus on CycloneDX format only:**
+- **REMOVED**: SPDX format support (use only CycloneDX 1.4 JSON)
+- **REMOVED**: `output_format` parameter from generate_sbom (always CycloneDX)
+- **ENHANCED**: CycloneDX SBOM now includes comprehensive metadata from purl2notices:
+  - Package homepage as external reference
+  - License information from upstream_license field
+  - Better structured component data
+
+**Why CycloneDX only:**
+- Industry standard for software supply chain
+- Better tooling ecosystem support
+- Simpler API (one format to maintain)
+- purl2notices provides all needed data
+
+**SBOM now includes:**
+- Name, version, PURL (Package URL)
+- Licenses (from purl2notices upstream_license)
+- Homepage URLs (as external references)
+- Complete component metadata
+
+**Backend:**
+- Uses purl2notices scan mode to collect package data
+- Builds CycloneDX 1.4 JSON structure
+- No external SBOM tools needed
+
+### Dependencies
+
+- Added `ossnotices>=1.0.2` to dependency list
+
 ## [1.5.2] - 2025-01-12
 
 ### Fixed

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-semclone"
-version = "1.5.2"
+version = "1.5.4"
 description = "Model Context Protocol server for SEMCL.ONE OSS compliance toolchain"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,7 +37,8 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0.0",
-    "purl2notices>=1.2.7",  # Primary scanning tool - replaces osslili+src2purl for scan_directory
+    "purl2notices>=1.2.7",  # Primary scanning tool for scan_directory and SBOM generation
+    "ossnotices>=1.0.2",  # Simplified wrapper for legal notices generation
     "binarysniffer>=1.11.3",
     "ospac>=1.2.3",
     "vulnq>=1.0.2",

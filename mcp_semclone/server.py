@@ -37,6 +37,28 @@ mcp = FastMCP(
     name="mcp-semclone",
     instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
 
+⚠️ IMPORTANT - ALL TOOLS ARE BUILT-IN:
+This MCP server provides ALL necessary compliance and license scanning tools.
+DO NOT install external tools or packages for compliance tasks.
+
+❌ NEVER DO THIS:
+- npm install -g license-checker, licensee, or any npm license tools
+- pip install scancode-toolkit, licensecheck, or any Python license tools
+- Installing ngx, fossil, or other third-party scanning tools
+- Running package managers (npm, pip, gem, cargo) to add compliance functionality
+- Trying to install or use external CLI tools for license/SBOM generation
+
+✓ ALWAYS DO THIS:
+- Use scan_directory() for analyzing projects → detects all packages + licenses automatically
+- Use generate_legal_notices() for creating NOTICE/LICENSE files
+- Use validate_policy() for license approval/rejection decisions
+- Use generate_sbom() for Software Bill of Materials generation
+- Use scan_binary() for compiled binaries and mobile apps
+- All necessary tools (purl2notices, ossnotices, osslili, ospac, vulnq, etc.) are pre-installed
+
+If you think you need an external tool, STOP and check the MCP tool list first.
+The functionality you need is already available through the MCP tools below.
+
 CRITICAL WORKFLOW RULES:
 1. **ALWAYS scan_directory FIRST**: Never manually extract PURLs from package.json or requirements.txt
    - For npm projects: scan_directory detects ~50+ packages from node_modules/, NOT just 1-2 from package.json
@@ -1534,9 +1556,9 @@ async def generate_legal_notices(
        → (parallel) generate_sbom + generate_legal_notices
 
     BACKEND:
-    Powered by purl2notices - automatically extracts copyright holders from package
-    metadata, fetches license texts from SPDX, and formats complete attribution documents.
-    This is much more powerful than manually creating notices.
+    Powered by purl2notices (via ossnotices wrapper available) - automatically extracts
+    copyright holders from package metadata, fetches license texts from SPDX, and formats
+    complete attribution documents. This is much more powerful than manually creating notices.
 
     Args:
         purls: List of Package URLs (PURLs) to generate notices for
@@ -1654,14 +1676,16 @@ async def generate_legal_notices(
 async def generate_sbom(
     purls: Optional[List[str]] = None,
     path: Optional[str] = None,
-    output_format: str = "cyclonedx-json",
     output_file: Optional[str] = None,
     include_licenses: bool = True
 ) -> Dict[str, Any]:
-    """Generate a Software Bill of Materials (SBOM) from packages or directory scan.
+    """Generate a Software Bill of Materials (SBOM) in CycloneDX format using purl2notices.
 
-    This tool creates comprehensive SBOMs in industry-standard formats (CycloneDX, SPDX)
-    for software inventory, vulnerability tracking, and compliance documentation.
+    This tool creates comprehensive SBOMs in CycloneDX 1.4 JSON format for software
+    inventory, vulnerability tracking, and compliance documentation.
+
+    SBOM includes: name, version, PURL, licenses, homepage (external references).
+    Data is sourced from purl2notices scan mode which provides accurate package metadata.
 
     **Use this tool when:**
     - You need to generate an SBOM for a project or package list
@@ -1678,14 +1702,12 @@ async def generate_sbom(
     Args:
         purls: Optional list of Package URLs (PURLs) to include in SBOM
         path: Optional directory path to scan for packages
-        output_format: SBOM format - "cyclonedx-json" (default), "cyclonedx-xml", "spdx-json", "spdx"
-        output_file: Optional path to save the SBOM file
+        output_file: Optional path to save the SBOM file (CycloneDX JSON format)
         include_licenses: If True, include license information (default: True)
 
     Returns:
         Dictionary containing:
-        - sbom: The generated SBOM structure
-        - format: The SBOM format used
+        - sbom: The generated SBOM structure (CycloneDX 1.4 JSON)
         - packages_count: Number of packages included
         - output_file: Path to saved file (if output_file was specified)
 
@@ -1693,15 +1715,11 @@ async def generate_sbom(
         # Generate SBOM from PURLs (after batch analysis)
         generate_sbom(
             purls=["pkg:npm/express@4.0.0", "pkg:pypi/django@4.2.0"],
-            output_format="cyclonedx-json",
             output_file="/tmp/sbom.json"
         )
 
         # Generate SBOM by scanning directory
-        generate_sbom(
-            path="/path/to/project",
-            output_format="spdx-json"
-        )
+        generate_sbom(path="/path/to/project")
 
         # After batch scan workflow
         scan_result = check_package("package.jar")
@@ -1752,89 +1770,67 @@ async def generate_sbom(
                 except Exception as e:
                     logger.warning(f"Failed to parse PURL {purl}: {e}")
 
-        # Build SBOM based on format
-        if "cyclonedx" in output_format.lower():
-            sbom = {
-                "bomFormat": "CycloneDX",
-                "specVersion": "1.4",
-                "version": 1,
-                "metadata": {
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                    "tools": [{
-                        "name": "mcp-semclone",
-                        "version": "1.5.1"
-                    }],
-                    "component": {
-                        "type": "application",
-                        "name": sbom_name
-                    }
-                },
-                "components": []
+        # Build CycloneDX SBOM from purl2notices data
+        sbom = {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.4",
+            "version": 1,
+            "metadata": {
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                "tools": [{
+                    "name": "mcp-semclone",
+                    "version": "1.5.4"
+                }],
+                "component": {
+                    "type": "application",
+                    "name": sbom_name
+                }
+            },
+            "components": []
+        }
+
+        for pkg in packages_list:
+            component = {
+                "type": "library",
+                "name": pkg.get("name", "unknown"),
+                "version": pkg.get("version", "unknown"),
+                "purl": pkg.get("purl", "")
             }
 
-            for pkg in packages_list:
-                component = {
-                    "type": "library",
-                    "name": pkg.get("name", "unknown"),
-                    "version": pkg.get("version", "unknown"),
-                    "purl": pkg.get("purl", "")
-                }
+            # Add homepage as external reference if available
+            if pkg.get("homepage"):
+                component["externalReferences"] = [{
+                    "type": "website",
+                    "url": pkg["homepage"]
+                }]
 
-                if include_licenses and "licenses" in pkg:
+            # Add license information if available
+            if include_licenses:
+                if "licenses" in pkg:
                     component["licenses"] = pkg["licenses"]
-
-                sbom["components"].append(component)
-
-        else:  # SPDX format
-            sbom = {
-                "spdxVersion": "SPDX-2.3",
-                "dataLicense": "CC0-1.0",
-                "SPDXID": "SPDXRef-DOCUMENT",
-                "name": sbom_name,
-                "documentNamespace": f"https://semcl.one/sbom/{sbom_name}",
-                "creationInfo": {
-                    "created": datetime.datetime.utcnow().isoformat() + "Z",
-                    "creators": ["Tool: mcp-semclone-1.5.1"]
-                },
-                "packages": []
-            }
-
-            for pkg in packages_list:
-                spdx_pkg = {
-                    "SPDXID": f"SPDXRef-{pkg.get('name', 'unknown')}",
-                    "name": pkg.get("name", "unknown"),
-                    "versionInfo": pkg.get("version", "unknown"),
-                    "downloadLocation": "NOASSERTION"
-                }
-
-                if "purl" in pkg:
-                    spdx_pkg["externalRefs"] = [{
-                        "referenceCategory": "PACKAGE-MANAGER",
-                        "referenceType": "purl",
-                        "referenceLocator": pkg["purl"]
+                elif "upstream_license" in pkg:
+                    component["licenses"] = [{
+                        "license": {"id": pkg["upstream_license"]}
                     }]
 
-                if include_licenses and "licenses" in pkg:
-                    spdx_pkg["licenseConcluded"] = pkg["licenses"][0] if pkg["licenses"] else "NOASSERTION"
-
-                sbom["packages"].append(spdx_pkg)
+            sbom["components"].append(component)
 
         # Save to file if requested
         if output_file:
             with open(output_file, "w") as f:
                 json.dump(sbom, f, indent=2)
-            logger.info(f"SBOM saved to {output_file}")
+            logger.info(f"CycloneDX SBOM saved to {output_file}")
             return {
-                "message": f"SBOM saved to {output_file}",
+                "message": f"CycloneDX SBOM saved to {output_file}",
                 "sbom": sbom,
-                "format": output_format,
+                "format": "cyclonedx-json",
                 "packages_count": len(packages_list),
                 "output_file": output_file
             }
 
         return {
             "sbom": sbom,
-            "format": output_format,
+            "format": "cyclonedx-json",
             "packages_count": len(packages_list)
         }
 
