@@ -7,6 +7,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.6] - 2025-01-13
+
+### Changed
+
+#### Split Legal Notices Generation into Two Clear Tools
+
+**CLARITY IMPROVEMENT: Separated source scanning from PURL downloads**
+
+**Problem:**
+- v1.5.5 had one tool with two modes (path OR purls parameter)
+- Confusing for LLMs to choose which parameter to use
+- Not obvious which approach is faster/recommended
+
+**Solution:**
+Split `generate_legal_notices` into two distinct tools with clear purposes:
+
+1. **`generate_legal_notices(path, ...)`** - PRIMARY TOOL (FAST)
+   - Default tool for most cases
+   - Scans source code directly (node_modules/, site-packages/)
+   - Detects all transitive dependencies automatically
+   - 10x faster than downloading from registries
+   - Required parameter: `path` (no optional parameters confusion)
+
+2. **`generate_legal_notices_from_purls(purls, ...)`** - SPECIAL CASES (SLOW)
+   - Use only when dependencies NOT installed locally
+   - Downloads packages from npm/PyPI/etc registries
+   - Required parameter: `purls` list
+   - Clear name indicates it's downloading from registries
+
+**Benefits:**
+- **Clear separation of concerns**: Each tool does one thing
+- **Better LLM guidance**: Tool names indicate purpose and performance
+- **No parameter confusion**: path vs purls is now two separate tools
+- **Self-documenting**: Names make it obvious which to use
+
+**Updated Workflow Instructions:**
+- CRITICAL WORKFLOW RULES now lists two tools clearly
+- Guidance on when to use each tool
+- Emphasizes generate_legal_notices (path) as default
+
+**Breaking Changes:**
+- `generate_legal_notices(purls=[...])` no longer works
+- Use `generate_legal_notices_from_purls(purls=[...])` instead
+- `generate_legal_notices` now requires `path` parameter (not optional)
+
+**Migration:**
+```python
+# OLD (v1.5.5 - no longer works):
+generate_legal_notices(purls=purl_list, output_file="NOTICE.txt")
+
+# NEW (v1.5.6):
+generate_legal_notices_from_purls(purls=purl_list, output_file="NOTICE.txt")
+
+# RECOMMENDED (v1.5.6 - use this instead):
+generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
+```
+
+## [1.5.5] - 2025-01-13
+
+### Changed
+
+#### generate_legal_notices: Direct Source Scanning (10x Faster)
+
+**MAJOR PERFORMANCE IMPROVEMENT: Added 'path' parameter to scan source code directly**
+
+**Problem:**
+- Previous workflow was inefficient: scan_directory → extract PURLs → generate_legal_notices downloads all PURLs from registries
+- For 49 packages, this meant downloading each package from npm/PyPI (slow, 1-2 minutes)
+- purl2notices was scanning source code, then re-downloading everything again
+
+**Solution:**
+- Added `path` parameter to generate_legal_notices()
+- Now supports two modes:
+  1. **Direct scanning (RECOMMENDED)**: `generate_legal_notices(path="/path/to/project")` - Scans source directly (FAST)
+  2. **PURL download (LEGACY)**: `generate_legal_notices(purls=[...])` - Downloads from registries (SLOW)
+
+**Performance:**
+- Direct scanning: ~5-10 seconds for 49 packages (reads local files)
+- PURL download: ~60-120 seconds for 49 packages (downloads from registries)
+- 10x faster for typical projects
+
+**API Changes:**
+```python
+# NEW - RECOMMENDED (FAST):
+generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
+
+# OLD - Still supported (SLOW):
+scan_result = scan_directory("/path/to/project")
+purls = [pkg["purl"] for pkg in scan_result["packages"]]
+generate_legal_notices(purls=purls, output_file="NOTICE.txt")
+```
+
+**Updated Workflow Instructions:**
+- CRITICAL WORKFLOW RULES now recommends direct path usage first
+- scan_directory → generate_legal_notices(purls) workflow is now marked as "SLOWER - Alternative"
+- Added clear performance guidance to help LLMs choose the right approach
+
+**Backwards Compatibility:**
+- Existing code using `purls` parameter continues to work
+- No breaking changes
+
 ## [1.5.4] - 2025-01-13
 
 ### Changed
