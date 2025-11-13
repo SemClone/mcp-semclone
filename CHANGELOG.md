@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.4] - 2025-01-13
+
+### Changed
+
+#### Server Instructions: Prevent External Tool Installation
+
+**Added prominent warning to prevent LLMs from installing external compliance tools:**
+- Added "IMPORTANT - ALL TOOLS ARE BUILT-IN" section at top of server instructions
+- Explicitly warns against installing: npm license-checker, scancode-toolkit, ngx, fossil, etc.
+- Clarifies that all necessary tools (purl2notices, ossnotices, osslili, ospac, vulnq) are pre-installed
+- Directs LLMs to use MCP-provided tools instead of trying to install external packages
+
+**Why this matters:**
+- Prevents LLMs from wasting time trying to install tools that are already available
+- Avoids confusion about which tools to use (use MCP tools, not external CLIs)
+- Reduces risk of LLMs using outdated or incorrect external tools
+- Ensures consistent compliance scanning using the SEMCL.ONE toolchain
+
+**User Impact:**
+- Faster response times (no unnecessary tool installation attempts)
+- More reliable results (always uses the correct, pre-installed tools)
+- Clearer guidance for LLMs on how to perform compliance tasks
+
 ## [1.5.3] - 2025-01-12
 
 ### Added

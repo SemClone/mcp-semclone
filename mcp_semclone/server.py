@@ -37,6 +37,28 @@ mcp = FastMCP(
     name="mcp-semclone",
     instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
 
+⚠️ IMPORTANT - ALL TOOLS ARE BUILT-IN:
+This MCP server provides ALL necessary compliance and license scanning tools.
+DO NOT install external tools or packages for compliance tasks.
+
+❌ NEVER DO THIS:
+- npm install -g license-checker, licensee, or any npm license tools
+- pip install scancode-toolkit, licensecheck, or any Python license tools
+- Installing ngx, fossil, or other third-party scanning tools
+- Running package managers (npm, pip, gem, cargo) to add compliance functionality
+- Trying to install or use external CLI tools for license/SBOM generation
+
+✓ ALWAYS DO THIS:
+- Use scan_directory() for analyzing projects → detects all packages + licenses automatically
+- Use generate_legal_notices() for creating NOTICE/LICENSE files
+- Use validate_policy() for license approval/rejection decisions
+- Use generate_sbom() for Software Bill of Materials generation
+- Use scan_binary() for compiled binaries and mobile apps
+- All necessary tools (purl2notices, ossnotices, osslili, ospac, vulnq, etc.) are pre-installed
+
+If you think you need an external tool, STOP and check the MCP tool list first.
+The functionality you need is already available through the MCP tools below.
+
 CRITICAL WORKFLOW RULES:
 1. **ALWAYS scan_directory FIRST**: Never manually extract PURLs from package.json or requirements.txt
    - For npm projects: scan_directory detects ~50+ packages from node_modules/, NOT just 1-2 from package.json
@@ -1757,7 +1779,7 @@ async def generate_sbom(
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                 "tools": [{
                     "name": "mcp-semclone",
-                    "version": "1.5.3"
+                    "version": "1.5.4"
                 }],
                 "component": {
                     "type": "application",
