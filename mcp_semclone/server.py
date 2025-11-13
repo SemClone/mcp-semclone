@@ -1534,9 +1534,9 @@ async def generate_legal_notices(
        → (parallel) generate_sbom + generate_legal_notices
 
     BACKEND:
-    Powered by purl2notices - automatically extracts copyright holders from package
-    metadata, fetches license texts from SPDX, and formats complete attribution documents.
-    This is much more powerful than manually creating notices.
+    Powered by purl2notices (via ossnotices wrapper available) - automatically extracts
+    copyright holders from package metadata, fetches license texts from SPDX, and formats
+    complete attribution documents. This is much more powerful than manually creating notices.
 
     Args:
         purls: List of Package URLs (PURLs) to generate notices for
@@ -1663,6 +1663,8 @@ async def generate_sbom(
     This tool creates comprehensive SBOMs in industry-standard formats (CycloneDX, SPDX)
     for software inventory, vulnerability tracking, and compliance documentation.
 
+    SBOM includes: name, version, PURL, licenses, homepage (external references), and package URLs.
+
     **Use this tool when:**
     - You need to generate an SBOM for a project or package list
     - Creating inventory documentation for compliance
@@ -1762,7 +1764,7 @@ async def generate_sbom(
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "tools": [{
                         "name": "mcp-semclone",
-                        "version": "1.5.1"
+                        "version": "1.5.2"
                     }],
                     "component": {
                         "type": "application",
@@ -1780,8 +1782,21 @@ async def generate_sbom(
                     "purl": pkg.get("purl", "")
                 }
 
-                if include_licenses and "licenses" in pkg:
-                    component["licenses"] = pkg["licenses"]
+                # Add homepage as external reference if available
+                if pkg.get("homepage"):
+                    component["externalReferences"] = [{
+                        "type": "website",
+                        "url": pkg["homepage"]
+                    }]
+
+                # Add license information if available
+                if include_licenses:
+                    if "licenses" in pkg:
+                        component["licenses"] = pkg["licenses"]
+                    elif "upstream_license" in pkg:
+                        component["licenses"] = [{
+                            "license": {"id": pkg["upstream_license"]}
+                        }]
 
                 sbom["components"].append(component)
 
@@ -1794,7 +1809,7 @@ async def generate_sbom(
                 "documentNamespace": f"https://semcl.one/sbom/{sbom_name}",
                 "creationInfo": {
                     "created": datetime.datetime.utcnow().isoformat() + "Z",
-                    "creators": ["Tool: mcp-semclone-1.5.1"]
+                    "creators": ["Tool: mcp-semclone-1.5.2"]
                 },
                 "packages": []
             }
@@ -1804,18 +1819,34 @@ async def generate_sbom(
                     "SPDXID": f"SPDXRef-{pkg.get('name', 'unknown')}",
                     "name": pkg.get("name", "unknown"),
                     "versionInfo": pkg.get("version", "unknown"),
-                    "downloadLocation": "NOASSERTION"
+                    "downloadLocation": pkg.get("homepage", "NOASSERTION")
                 }
 
+                # Add external references for PURL and homepage
+                external_refs = []
                 if "purl" in pkg:
-                    spdx_pkg["externalRefs"] = [{
+                    external_refs.append({
                         "referenceCategory": "PACKAGE-MANAGER",
                         "referenceType": "purl",
                         "referenceLocator": pkg["purl"]
-                    }]
+                    })
+                if pkg.get("homepage") and pkg["homepage"] != "NOASSERTION":
+                    external_refs.append({
+                        "referenceCategory": "OTHER",
+                        "referenceType": "website",
+                        "referenceLocator": pkg["homepage"]
+                    })
+                if external_refs:
+                    spdx_pkg["externalRefs"] = external_refs
 
-                if include_licenses and "licenses" in pkg:
-                    spdx_pkg["licenseConcluded"] = pkg["licenses"][0] if pkg["licenses"] else "NOASSERTION"
+                # Add license information
+                if include_licenses:
+                    if "upstream_license" in pkg:
+                        spdx_pkg["licenseConcluded"] = pkg["upstream_license"]
+                    elif "licenses" in pkg:
+                        spdx_pkg["licenseConcluded"] = pkg["licenses"][0] if pkg["licenses"] else "NOASSERTION"
+                    else:
+                        spdx_pkg["licenseConcluded"] = "NOASSERTION"
 
                 sbom["packages"].append(spdx_pkg)
 
