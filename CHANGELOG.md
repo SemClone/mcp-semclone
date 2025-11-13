@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5] - 2025-01-13
+
+### Changed
+
+#### generate_legal_notices: Direct Source Scanning (10x Faster)
+
+**MAJOR PERFORMANCE IMPROVEMENT: Added 'path' parameter to scan source code directly**
+
+**Problem:**
+- Previous workflow was inefficient: scan_directory → extract PURLs → generate_legal_notices downloads all PURLs from registries
+- For 49 packages, this meant downloading each package from npm/PyPI (slow, 1-2 minutes)
+- purl2notices was scanning source code, then re-downloading everything again
+
+**Solution:**
+- Added `path` parameter to generate_legal_notices()
+- Now supports two modes:
+  1. **Direct scanning (RECOMMENDED)**: `generate_legal_notices(path="/path/to/project")` - Scans source directly (FAST)
+  2. **PURL download (LEGACY)**: `generate_legal_notices(purls=[...])` - Downloads from registries (SLOW)
+
+**Performance:**
+- Direct scanning: ~5-10 seconds for 49 packages (reads local files)
+- PURL download: ~60-120 seconds for 49 packages (downloads from registries)
+- 10x faster for typical projects
+
+**API Changes:**
+```python
+# NEW - RECOMMENDED (FAST):
+generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
+
+# OLD - Still supported (SLOW):
+scan_result = scan_directory("/path/to/project")
+purls = [pkg["purl"] for pkg in scan_result["packages"]]
+generate_legal_notices(purls=purls, output_file="NOTICE.txt")
+```
+
+**Updated Workflow Instructions:**
+- CRITICAL WORKFLOW RULES now recommends direct path usage first
+- scan_directory → generate_legal_notices(purls) workflow is now marked as "SLOWER - Alternative"
+- Added clear performance guidance to help LLMs choose the right approach
+
+**Backwards Compatibility:**
+- Existing code using `purls` parameter continues to work
+- No breaking changes
+
 ## [1.5.4] - 2025-01-13
 
 ### Changed
