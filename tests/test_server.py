@@ -211,19 +211,20 @@ class TestMCPServer:
 
     @pytest.mark.asyncio
     async def test_generate_sbom(self):
-        """Test SBOM generation."""
+        """Test SBOM generation (CycloneDX format)."""
         with patch("mcp_semclone.server.scan_directory") as mock_scan:
             mock_scan.return_value = {
-                "packages": [{"purl": "pkg:npm/express@4.17.1", "name": "express"}],
+                "packages": [{"purl": "pkg:npm/express@4.17.1", "name": "express", "version": "4.17.1"}],
                 "licenses": [{"spdx_id": "MIT", "file": "LICENSE"}]
             }
 
-            result = await server_module.generate_sbom(path="/test", output_format="spdx")
+            result = await server_module.generate_sbom(path="/test")
 
             assert "sbom" in result
-            assert result["sbom"]["spdxVersion"] == "SPDX-2.3"
-            assert result["sbom"]["dataLicense"] == "CC0-1.0"
-            assert len(result["sbom"]["packages"]) == 1
+            assert result["sbom"]["bomFormat"] == "CycloneDX"
+            assert result["sbom"]["specVersion"] == "1.4"
+            assert len(result["sbom"]["components"]) == 1
+            assert result["sbom"]["components"][0]["name"] == "express"
 
     @pytest.mark.asyncio
     async def test_generate_sbom_with_output_file(self, tmp_path):
