@@ -60,21 +60,28 @@ If you think you need an external tool, STOP and check the MCP tool list first.
 The functionality you need is already available through the MCP tools below.
 
 CRITICAL WORKFLOW RULES:
-1. **BEST PRACTICE: Use generate_legal_notices(path=...) directly - FAST!**
-   - RECOMMENDED: generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
-   - Scans source code directly with purl2notices (10x faster than downloading PURLs)
-   - Detects ALL transitive dependencies automatically (node_modules/, site-packages/, vendor/)
-   - NO need to call scan_directory first!
 
-2. **Alternative workflow (SLOWER)**: scan_directory → generate_legal_notices(purls=[...])
-   - Only use if you need scan results for other purposes (vulnerability checking, etc.)
-   - scan_directory returns packages with PURLs
-   - Then generate_legal_notices downloads each PURL from registries (slow)
-   - IMPORTANT: Use ALL packages from scan_directory, not just direct dependencies
+1. **TWO TOOLS FOR LEGAL NOTICES - Choose the right one:**
+
+   a) **generate_legal_notices(path=...)** - DEFAULT, use this for most cases (FAST)
+      - Scans source code directly (node_modules/, site-packages/, vendor/)
+      - Detects ALL transitive dependencies automatically
+      - 10x faster than downloading from registries
+      - Example: generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
+
+   b) **generate_legal_notices_from_purls(purls=[...])** - SPECIAL CASES only (SLOW)
+      - Downloads packages from npm/PyPI/etc registries
+      - Use ONLY when: dependencies not installed locally, or you have a PURL list from another source
+      - Example: generate_legal_notices_from_purls(purls=purl_list, output_file="NOTICE.txt")
+
+2. **When to use each tool:**
+   - Have source code with dependencies installed? → Use generate_legal_notices(path=...)
+   - No local dependencies (no node_modules/)? → Use generate_legal_notices_from_purls(purls=[...])
+   - Need vulnerability scan too? → scan_directory() first, then generate_legal_notices_from_purls(purls)
 
 3. **NEVER manually extract PURLs** from package.json or requirements.txt
-   - WRONG: Reading package.json and calling generate_legal_notices with "http-server@14.1.1"
-   - RIGHT: generate_legal_notices(path=".", output_file="NOTICE.txt")
+   - WRONG: Reading package.json, extracting "http-server@14.1.1" → 1 PURL
+   - RIGHT: Use generate_legal_notices(path=".") OR scan_directory() for ALL transitive deps
    - For npm projects: Needs ~50+ packages from node_modules/, NOT just 1-2 from package.json
 
 4. **Shortcut for complete workflow**: Use run_compliance_check() - it does everything in one call
@@ -1496,29 +1503,32 @@ async def validate_license_list(
 
 @mcp.tool()
 async def generate_legal_notices(
-    purls: Optional[List[str]] = None,
-    path: Optional[str] = None,
+    path: str,
     output_format: str = "text",
     output_file: Optional[str] = None,
     include_license_text: bool = True
 ) -> Dict[str, Any]:
-    """PRIMARY TOOL: Generate comprehensive legal notices (attribution) using purl2notices.
+    """PRIMARY TOOL: Generate legal notices by scanning source code directly (DEFAULT - FAST).
 
-    This is the MAIN tool for creating complete legal documentation with copyright extraction.
-    Powered by purl2notices - automatically extracts copyright holders, fetches license texts
-    from SPDX, and formats production-ready NOTICE files.
+    This is the RECOMMENDED tool for creating legal compliance documentation.
+    Scans your project's source code directly to detect ALL packages (including transitive
+    dependencies) and generates comprehensive attribution notices.
 
-    ⚠️ BEST PRACTICE: Use 'path' parameter to scan source code directly (FAST)!
-    - RECOMMENDED: generate_legal_notices(path="/path/to/project") → Scans source directly
-    - ALTERNATIVE: scan_directory() → Extract PURLs → generate_legal_notices(purls=[...]) → Downloads from registries (SLOW)
+    ⚠️ THIS IS THE DEFAULT TOOL - Use this for most cases!
+    - Scans source code directly (node_modules/, site-packages/, vendor/)
+    - Detects ALL packages automatically (transitive dependencies included)
+    - 10x faster than downloading from registries
+    - No need to extract PURLs manually
 
-    Using 'path' is 10x faster because it scans local source code instead of downloading packages.
+    WHEN TO USE THIS TOOL:
+    - You have source code locally with dependencies installed
+    - npm project with node_modules/ directory
+    - Python project with site-packages/ or virtualenv
+    - Any project with locally installed dependencies
 
-    ⚠️ CRITICAL: If using purls parameter, DO NOT manually extract from package.json/requirements.txt!
-    ALWAYS get PURLs from scan_directory() which detects ALL transitive dependencies.
-    - WRONG: Reading package.json, extracting "http-server@14.1.1", calling this tool with 1 PURL
-    - RIGHT: Use path parameter OR scan_directory() → Extract ALL PURLs → Pass to this tool
-    - Example: npm project with 1 dependency = ~50 packages in node_modules (all needed for notices)
+    WHEN NOT TO USE:
+    - Dependencies not installed locally → Use generate_legal_notices_from_purls instead
+    - You already have a PURL list → Use generate_legal_notices_from_purls instead
 
     PURPOSE:
     Creates production-ready legal compliance documentation including:
@@ -1564,13 +1574,11 @@ async def generate_legal_notices(
        → (parallel) generate_sbom + generate_legal_notices
 
     BACKEND:
-    Powered by purl2notices (via ossnotices wrapper available) - automatically extracts
-    copyright holders from package metadata, fetches license texts from SPDX, and formats
-    complete attribution documents. This is much more powerful than manually creating notices.
+    Uses purl2notices in scan mode to read source code directly. Automatically extracts
+    copyright holders, fetches license texts from SPDX, and formats complete attribution.
 
     Args:
-        purls: List of Package URLs (PURLs) to generate notices for (optional if path provided)
-        path: Path to source directory to scan (RECOMMENDED - faster than purls)
+        path: Path to source directory to scan (project root with dependencies installed)
         output_format: Output format - "text" (default), "html", "markdown"
         output_file: Optional path to save the output file
         include_license_text: If True, include full license texts (default: True)
@@ -1578,77 +1586,50 @@ async def generate_legal_notices(
     Returns:
         Dictionary containing:
         - notices: The generated legal notices text
-        - packages_processed: Number of packages successfully processed
+        - packages_processed: Number/description of packages processed
         - packages_failed: Number of packages that failed processing
         - output_file: Path to saved file (if output_file was specified)
         - format: The output format used
+        - mode: "scan_directory" (indicates source code scanning was used)
 
     Examples:
-        # RECOMMENDED: Scan source directory directly (FAST)
+        # Generate text NOTICE file for npm project
         generate_legal_notices(
-            path="/path/to/project",
+            path="/path/to/npm-project",
             output_file="NOTICE.txt"
         )
 
-        # Alternative: Use PURLs from scan_directory (SLOW - downloads from registries)
+        # Generate HTML notices for Python project
         generate_legal_notices(
-            purls=["pkg:npm/express@4.0.0", "pkg:pypi/django@4.2.0"],
-            output_format="text"
+            path="/path/to/python-project",
+            output_format="html",
+            output_file="NOTICE.html"
         )
 
-        # Generate HTML notices and save to file
-        generate_legal_notices(
-            purls=purl_list,
-            output_format="html",
-            output_file="/tmp/NOTICE.html"
-        )
+        # Quick scan without saving to file
+        result = generate_legal_notices(path=".")
+        print(result["notices"])
     """
     import subprocess
     import tempfile
 
     try:
-        if not purls and not path:
-            return {"error": "Either 'purls' or 'path' parameter must be provided"}
-
-        if purls and path:
-            return {"error": "Cannot specify both 'purls' and 'path' - choose one"}
+        logger.info(f"Generating legal notices by scanning directory: {path}")
 
         # Prepare output path
         output_path = output_file or tempfile.mktemp(suffix=f'.{output_format}')
 
-        # MODE 1: Scan source directory directly (RECOMMENDED - FAST)
-        if path:
-            logger.info(f"Generating legal notices by scanning directory: {path}")
-
-            cmd = [
-                "purl2notices",
-                "-i", path,
-                "-m", "scan",  # Scan mode - reads source code directly
-                "-o", output_path,
-                "-f", output_format,
-                "-r",  # Recursive
-                "--max-depth", "3",
-                "--continue-on-error"
-            ]
-
-            purl_file_path = None  # No temp file needed
-
-        # MODE 2: Use PURLs list (downloads from registries - SLOW)
-        else:
-            logger.info(f"Generating legal notices for {len(purls)} packages (downloading from registries)")
-
-            # Create temporary file with PURLs
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as purl_file:
-                for purl in purls:
-                    purl_file.write(f"{purl}\n")
-                purl_file_path = purl_file.name
-
-            cmd = [
-                "purl2notices",
-                "-i", purl_file_path,
-                "-o", output_path,
-                "-f", output_format
-            ]
+        # Run purl2notices in scan mode - reads source code directly
+        cmd = [
+            "purl2notices",
+            "-i", path,
+            "-m", "scan",  # Scan mode - reads source code directly
+            "-o", output_path,
+            "-f", output_format,
+            "-r",  # Recursive
+            "--max-depth", "3",
+            "--continue-on-error"
+        ]
 
         logger.info(f"Running purl2notices: {' '.join(cmd)}")
 
@@ -1659,10 +1640,6 @@ async def generate_legal_notices(
             text=True,
             timeout=300  # 5 minute timeout
         )
-
-        # Clean up temp purl file (only if created for PURLs mode)
-        if purl_file_path:
-            Path(purl_file_path).unlink(missing_ok=True)
 
         if result.returncode != 0:
             logger.error(f"purl2notices failed: {result.stderr}")
@@ -1677,19 +1654,14 @@ async def generate_legal_notices(
             with open(output_path, 'r') as f:
                 notices_content = f.read()
 
-            # Count packages from output or input
-            packages_count = len(purls) if purls else "unknown (scanned from directory)"
-
-            message = f"Successfully generated legal notices by scanning directory: {path}" if path else f"Successfully generated legal notices for {len(purls)} packages"
-
             return {
                 "notices": notices_content,
-                "packages_processed": packages_count,
+                "packages_processed": "scanned from directory",
                 "packages_failed": 0,
                 "output_file": output_path,
                 "format": output_format,
-                "message": message,
-                "mode": "scan_directory" if path else "download_purls"
+                "message": f"Successfully generated legal notices by scanning directory: {path}",
+                "mode": "scan_directory"
             }
         else:
             return {
@@ -1708,6 +1680,152 @@ async def generate_legal_notices(
         }
     except Exception as e:
         logger.error(f"Error generating legal notices: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def generate_legal_notices_from_purls(
+    purls: List[str],
+    output_format: str = "text",
+    output_file: Optional[str] = None,
+    include_license_text: bool = True
+) -> Dict[str, Any]:
+    """ALTERNATIVE TOOL: Generate legal notices from PURL list (downloads from registries - SLOWER).
+
+    Use this tool ONLY when:
+    - Dependencies are NOT installed locally (no node_modules/, site-packages/)
+    - You already have a list of PURLs from another source
+    - You're working with a PURL list, not source code
+
+    ⚠️ PERFORMANCE WARNING: This downloads packages from registries (slow)
+    - Downloads each package from npm/PyPI/etc (1-2 seconds per package)
+    - For 49 packages: ~60-120 seconds
+    - Use generate_legal_notices(path=...) instead if you have source code
+
+    ⚠️ CRITICAL: DO NOT manually extract PURLs from package.json or requirements.txt!
+    - WRONG: Reading package.json, extracting "http-server@14.1.1" → 1 PURL
+    - RIGHT: Use scan_directory() to get ALL transitive dependencies → 49 PURLs
+    - Example: npm project with 1 dependency = ~50 packages in node_modules (all needed!)
+
+    WHEN TO USE THIS TOOL:
+    - Source code not available locally
+    - Working with a pre-existing PURL list
+    - Dependencies not installed (no node_modules/ or site-packages/)
+
+    WHEN NOT TO USE (use generate_legal_notices instead):
+    - You have source code with dependencies installed locally
+    - npm project with node_modules/ → Use generate_legal_notices(path=...)
+    - Python project with virtualenv → Use generate_legal_notices(path=...)
+
+    Args:
+        purls: List of Package URLs (e.g., ["pkg:npm/express@4.0.0", "pkg:pypi/django@4.2.0"])
+        output_format: Output format - "text" (default), "html", "markdown"
+        output_file: Optional path to save the output file
+        include_license_text: If True, include full license texts (default: True)
+
+    Returns:
+        Dictionary containing:
+        - notices: The generated legal notices text
+        - packages_processed: Number of packages successfully processed
+        - packages_failed: Number of packages that failed processing
+        - output_file: Path to saved file (if output_file was specified)
+        - format: The output format used
+        - mode: "download_purls" (indicates registry downloads were used)
+
+    Examples:
+        # Generate notices from PURL list (after scan_directory)
+        scan_result = scan_directory("/path/to/project")
+        purls = [pkg["purl"] for pkg in scan_result["packages"]]
+        generate_legal_notices_from_purls(
+            purls=purls,
+            output_file="NOTICE.txt"
+        )
+
+        # Generate HTML notices from specific PURLs
+        generate_legal_notices_from_purls(
+            purls=["pkg:npm/express@4.21.2", "pkg:npm/body-parser@1.20.3"],
+            output_format="html",
+            output_file="NOTICE.html"
+        )
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        if not purls:
+            return {"error": "No PURLs provided"}
+
+        logger.info(f"Generating legal notices for {len(purls)} packages (downloading from registries)")
+
+        # Create temporary file with PURLs
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as purl_file:
+            for purl in purls:
+                purl_file.write(f"{purl}\n")
+            purl_file_path = purl_file.name
+
+        # Prepare output path
+        output_path = output_file or tempfile.mktemp(suffix=f'.{output_format}')
+
+        # Run purl2notices with PURL list - downloads from registries
+        cmd = [
+            "purl2notices",
+            "-i", purl_file_path,
+            "-o", output_path,
+            "-f", output_format
+        ]
+
+        logger.info(f"Running purl2notices: {' '.join(cmd)}")
+
+        # Run purl2notices
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+
+        # Clean up temp purl file
+        Path(purl_file_path).unlink(missing_ok=True)
+
+        if result.returncode != 0:
+            logger.error(f"purl2notices failed: {result.stderr}")
+            return {
+                "error": f"purl2notices failed: {result.stderr}",
+                "stdout": result.stdout,
+                "returncode": result.returncode
+            }
+
+        # Read generated notices
+        if Path(output_path).exists():
+            with open(output_path, 'r') as f:
+                notices_content = f.read()
+
+            return {
+                "notices": notices_content,
+                "packages_processed": len(purls),
+                "packages_failed": 0,
+                "output_file": output_path,
+                "format": output_format,
+                "message": f"Successfully generated legal notices for {len(purls)} packages",
+                "mode": "download_purls"
+            }
+        else:
+            return {
+                "error": "purl2notices completed but output file not found",
+                "stdout": result.stdout
+            }
+
+    except subprocess.TimeoutExpired:
+        logger.error("purl2notices timed out after 5 minutes")
+        return {"error": "Legal notices generation timed out after 5 minutes"}
+    except FileNotFoundError:
+        logger.error("purl2notices command not found")
+        return {
+            "error": "purl2notices not found. Install with: pip install purl2notices",
+            "install_command": "pip install purl2notices"
+        }
+    except Exception as e:
+        logger.error(f"Error generating legal notices from PURLs: {e}")
         return {"error": str(e)}
 
 
@@ -1818,7 +1936,7 @@ async def generate_sbom(
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                 "tools": [{
                     "name": "mcp-semclone",
-                    "version": "1.5.5"
+                    "version": "1.5.6"
                 }],
                 "component": {
                     "type": "application",

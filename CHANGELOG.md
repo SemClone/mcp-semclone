@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.6] - 2025-01-13
+
+### Changed
+
+#### Split Legal Notices Generation into Two Clear Tools
+
+**CLARITY IMPROVEMENT: Separated source scanning from PURL downloads**
+
+**Problem:**
+- v1.5.5 had one tool with two modes (path OR purls parameter)
+- Confusing for LLMs to choose which parameter to use
+- Not obvious which approach is faster/recommended
+
+**Solution:**
+Split `generate_legal_notices` into two distinct tools with clear purposes:
+
+1. **`generate_legal_notices(path, ...)`** - PRIMARY TOOL (FAST)
+   - Default tool for most cases
+   - Scans source code directly (node_modules/, site-packages/)
+   - Detects all transitive dependencies automatically
+   - 10x faster than downloading from registries
+   - Required parameter: `path` (no optional parameters confusion)
+
+2. **`generate_legal_notices_from_purls(purls, ...)`** - SPECIAL CASES (SLOW)
+   - Use only when dependencies NOT installed locally
+   - Downloads packages from npm/PyPI/etc registries
+   - Required parameter: `purls` list
+   - Clear name indicates it's downloading from registries
+
+**Benefits:**
+- **Clear separation of concerns**: Each tool does one thing
+- **Better LLM guidance**: Tool names indicate purpose and performance
+- **No parameter confusion**: path vs purls is now two separate tools
+- **Self-documenting**: Names make it obvious which to use
+
+**Updated Workflow Instructions:**
+- CRITICAL WORKFLOW RULES now lists two tools clearly
+- Guidance on when to use each tool
+- Emphasizes generate_legal_notices (path) as default
+
+**Breaking Changes:**
+- `generate_legal_notices(purls=[...])` no longer works
+- Use `generate_legal_notices_from_purls(purls=[...])` instead
+- `generate_legal_notices` now requires `path` parameter (not optional)
+
+**Migration:**
+```python
+# OLD (v1.5.5 - no longer works):
+generate_legal_notices(purls=purl_list, output_file="NOTICE.txt")
+
+# NEW (v1.5.6):
+generate_legal_notices_from_purls(purls=purl_list, output_file="NOTICE.txt")
+
+# RECOMMENDED (v1.5.6 - use this instead):
+generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
+```
+
 ## [1.5.5] - 2025-01-13
 
 ### Changed
