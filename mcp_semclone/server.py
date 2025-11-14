@@ -2023,7 +2023,12 @@ async def download_and_scan_package(
                         ])
 
                         if osslili_result.returncode == 0 and osslili_result.stdout:
-                            osslili_data = json.loads(osslili_result.stdout)
+                            # Strip informational messages (e.g., "ℹ Processing local path...")
+                            osslili_output = osslili_result.stdout
+                            json_start = osslili_output.find('{')
+                            if json_start != -1:
+                                osslili_output = osslili_output[json_start:]
+                            osslili_data = json.loads(osslili_output)
 
                             # Extract licenses from osslili
                             if osslili_data.get("components"):
