@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.9] - 2025-01-13
+
+### Enhanced
+
+#### Maven Parent POM License Resolution
+
+**Problem:**
+Maven packages often don't declare licenses directly in their package POM - the license is declared in a parent POM instead. When `download_and_scan_package` analyzed such packages, it would return no license information even though the license exists in the parent POM.
+
+**Solution:**
+Added Maven-specific license resolution using upmex's registry and ClearlyDefined API integration:
+
+**How it works:**
+1. After downloading and scanning a Maven package (pkg:maven/...)
+2. If no license is found in the package POM
+3. Automatically triggers upmex with `--registry --api clearlydefined` flags
+4. This queries ClearlyDefined which resolves parent POM licenses
+5. Updates result with `license_source: "parent_pom_via_clearlydefined"`
+
+**Example:**
+```python
+# Maven package with license in parent POM only
+download_and_scan_package(purl="pkg:maven/org.example/library@1.0.0")
+
+# Before (v1.5.8): declared_license = None
+# After (v1.5.9): declared_license = "Apache-2.0"
+#                 metadata.license_source = "parent_pom_via_clearlydefined"
+```
+
+**Changes:**
+- mcp_semclone/server.py: Added Maven detection and parent POM resolution
+- Tool docstring: Documented Maven-specific behavior
+- tests/test_server.py: Added test_maven_parent_pom_resolution
+
+**Impact:**
+- ✅ Maven packages now correctly report licenses from parent POMs
+- ✅ Automatic detection - no user action needed
+- ✅ Tracks license source for transparency
+- ✅ Falls back gracefully if parent POM resolution fails
+
 ## [1.5.8] - 2025-01-13
 
 ### Fixed & Redesigned

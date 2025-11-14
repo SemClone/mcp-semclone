@@ -1841,14 +1841,16 @@ async def download_and_scan_package(
     **Workflow (tries methods in order until sufficient data is collected):**
     1. **Primary**: Use purl2notices to download and analyze (fastest, most comprehensive)
     2. **Deep scan**: If incomplete, use purl2src to get download URL → download artifact → run osslili for deep license scanning + upmex for metadata
+       - **Maven-specific**: If license still missing for Maven packages, uses upmex with --registry --api clearlydefined to resolve parent POM licenses
     3. **Online fallback**: If still incomplete, use upmex --api clearlydefined/purldb for online metadata
 
     **What this tool does:**
     - Downloads the actual package source code from npm/PyPI/Maven/etc registries
     - Performs comprehensive license and copyright analysis
     - Extracts package metadata (name, version, homepage, description)
-    - Scans ALL source files for embedded licenses (not just package.json/setup.py)
+    - Scans ALL source files for embedded licenses (not just package.json/setup.py/pom.xml)
     - Returns copyright statements found in actual source code
+    - **Maven packages**: Automatically resolves parent POM licenses when not declared in package POM
 
     **When to use this tool:**
     - Package metadata is incomplete or missing (e.g., "UNKNOWN" license in PyPI)
@@ -2053,6 +2055,29 @@ async def download_and_scan_package(
                             if not result["declared_license"] and upmex_data.get("license"):
                                 result["declared_license"] = upmex_data["license"]
                             logger.info(f"upmex metadata extracted")
+
+                        # MAVEN SPECIFIC: If no license found and it's a Maven package, try with --registry and --api
+                        # This resolves parent POM licenses for Maven packages
+                        if not result["declared_license"] and purl.startswith("pkg:maven/"):
+                            logger.info(f"Maven package missing license, trying upmex with --registry --api clearlydefined")
+                            try:
+                                upmex_maven_result = _run_tool("upmex", [
+                                    "extract",
+                                    str(download_file),
+                                    "--format", "json",
+                                    "--registry",
+                                    "--api", "clearlydefined"
+                                ])
+
+                                if upmex_maven_result.returncode == 0 and upmex_maven_result.stdout:
+                                    maven_data = json.loads(upmex_maven_result.stdout)
+                                    if maven_data.get("license"):
+                                        result["declared_license"] = maven_data["license"]
+                                        result["metadata"]["license"] = maven_data["license"]
+                                        result["metadata"]["license_source"] = "parent_pom_via_clearlydefined"
+                                        logger.info(f"Maven parent POM license found: {maven_data['license']}")
+                            except Exception as e:
+                                logger.warning(f"Maven parent POM resolution failed: {e}")
 
                         # If we got data from deep scan, mark as successful
                         if result["detected_licenses"] or result["metadata"]:
