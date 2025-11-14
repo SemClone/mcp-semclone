@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2025-01-13
+
+### Fixed
+
+#### download_and_scan_package: Handle osslili Informational Output
+
+**Problem:**
+The `download_and_scan_package` tool was failing with JSON parsing errors when osslili outputs informational messages before JSON output. osslili now prefixes output with messages like:
+```
+ℹ Processing local path: package.tar.gz
+```
+
+This caused `json.loads()` to fail with "Expecting value: line 1 column 1 (char 0)"
+
+**Root Cause:**
+Line 2026 in server.py attempted to parse osslili stdout directly as JSON without stripping informational messages.
+
+**Solution:**
+Added preprocessing to find the first `{` character and parse JSON from that position, effectively stripping any informational messages before the JSON payload.
+
+**Changes:**
+- mcp_semclone/server.py:
+  * Added informational message stripping before JSON parsing (lines 2026-2031)
+  * Finds first `{` in output and parses from there
+  * Preserves backward compatibility with osslili versions that don't output messages
+
+**Installation Note:**
+When using pipx, ensure `purl2src` is installed with console scripts enabled:
+```bash
+pipx inject mcp-semclone purl2src --include-apps --force
+```
+
+**Impact:**
+- Tool now works correctly with latest osslili versions
+- All 7 tests passing
+- Fixes download failures reported in the field
+
 ## [1.6.0] - 2025-01-13
 
 ### Added
