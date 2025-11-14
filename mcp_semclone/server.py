@@ -2056,10 +2056,17 @@ async def download_and_scan_package(
                                 result["declared_license"] = upmex_data["license"]
                             logger.info(f"upmex metadata extracted")
 
-                        # MAVEN SPECIFIC: If no license found and it's a Maven package, try with --registry and --api
-                        # This resolves parent POM licenses for Maven packages
-                        if not result["declared_license"] and purl.startswith("pkg:maven/"):
-                            logger.info(f"Maven package missing license, trying upmex with --registry --api clearlydefined")
+                        # MAVEN SPECIFIC: Check parent POM for declared license
+                        # License can be in:
+                        # 1. Source file headers (already checked by osslili → detected_licenses)
+                        # 2. Package POM (already checked by upmex → declared_license)
+                        # 3. Parent POM (need to check with --registry --api clearlydefined)
+                        #
+                        # We check parent POM if:
+                        # - No declared_license found in package POM, OR
+                        # - We have detected_licenses from source but no official declaration
+                        if purl.startswith("pkg:maven/") and not result["declared_license"]:
+                            logger.info(f"Maven package missing declared license (may have detected licenses from source), checking parent POM")
                             try:
                                 upmex_maven_result = _run_tool("upmex", [
                                     "extract",
@@ -2075,14 +2082,31 @@ async def download_and_scan_package(
                                         result["declared_license"] = maven_data["license"]
                                         result["metadata"]["license"] = maven_data["license"]
                                         result["metadata"]["license_source"] = "parent_pom_via_clearlydefined"
+
+                                        # Add to detected_licenses if not already there
+                                        if maven_data["license"] not in result["detected_licenses"]:
+                                            result["detected_licenses"].append(maven_data["license"])
+
                                         logger.info(f"Maven parent POM license found: {maven_data['license']}")
+                                        if result["detected_licenses"]:
+                                            logger.info(f"Combined with source header licenses: {result['detected_licenses']}")
                             except Exception as e:
                                 logger.warning(f"Maven parent POM resolution failed: {e}")
 
                         # If we got data from deep scan, mark as successful
                         if result["detected_licenses"] or result["metadata"]:
                             result["method_used"] = "deep_scan"
-                            result["scan_summary"] = f"Deep scan completed. Downloaded and analyzed with osslili + upmex. Found {len(result['detected_licenses'])} licenses and {len(result['copyright_statements'])} copyrights."
+
+                            # Build summary showing license sources
+                            summary_parts = ["Deep scan completed"]
+                            if result["detected_licenses"]:
+                                summary_parts.append(f"found {len(result['detected_licenses'])} licenses")
+                                if result["metadata"].get("license_source") == "parent_pom_via_clearlydefined":
+                                    summary_parts.append("(includes parent POM license)")
+                            if result["copyright_statements"]:
+                                summary_parts.append(f"{len(result['copyright_statements'])} copyrights")
+
+                            result["scan_summary"] = ". ".join(summary_parts) + "."
                             return result
 
                     elif fallback_cmd:
