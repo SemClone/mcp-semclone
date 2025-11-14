@@ -11,40 +11,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Enhanced
 
-#### Maven Parent POM License Resolution
+#### Maven Parent POM License Resolution + Source Header Detection
 
 **Problem:**
-Maven packages often don't declare licenses directly in their package POM - the license is declared in a parent POM instead. When `download_and_scan_package` analyzed such packages, it would return no license information even though the license exists in the parent POM.
+Maven packages often don't declare licenses directly in their package POM - the license can be in:
+1. **Source file headers** (e.g., `// Licensed under Apache-2.0`)
+2. **Parent POM** (declared in parent but not in package POM)
+
+When `download_and_scan_package` analyzed such packages, it would miss one or both of these sources.
 
 **Solution:**
-Added Maven-specific license resolution using upmex's registry and ClearlyDefined API integration:
+Enhanced Maven-specific license resolution to check ALL three sources and combine results:
 
 **How it works:**
-1. After downloading and scanning a Maven package (pkg:maven/...)
-2. If no license is found in the package POM
-3. Automatically triggers upmex with `--registry --api clearlydefined` flags
-4. This queries ClearlyDefined which resolves parent POM licenses
+1. **Source file headers**: osslili scans all source files for license headers → populates `detected_licenses`
+2. **Package POM**: upmex extracts metadata from package POM → populates `declared_license` (if present)
+3. **Parent POM** (Maven-specific): If no `declared_license`, automatically triggers upmex with `--registry --api clearlydefined` to query ClearlyDefined which resolves parent POM licenses
+4. **Combines results**: Parent POM license added to `detected_licenses` if not already there
 5. Updates result with `license_source: "parent_pom_via_clearlydefined"`
 
-**Example:**
+**Examples:**
+
+**Scenario 1: License only in parent POM**
 ```python
-# Maven package with license in parent POM only
 download_and_scan_package(purl="pkg:maven/org.example/library@1.0.0")
 
-# Before (v1.5.8): declared_license = None
-# After (v1.5.9): declared_license = "Apache-2.0"
-#                 metadata.license_source = "parent_pom_via_clearlydefined"
+# Before (v1.5.8):
+#   declared_license: None
+#   detected_licenses: []
+
+# After (v1.5.9):
+#   declared_license: "Apache-2.0"  # From parent POM
+#   detected_licenses: ["Apache-2.0"]
+#   metadata.license_source: "parent_pom_via_clearlydefined"
+```
+
+**Scenario 2: Licenses in BOTH source headers AND parent POM**
+```python
+download_and_scan_package(purl="pkg:maven/org.example/another@2.0.0")
+
+# Result:
+#   declared_license: "Apache-2.0"  # From parent POM
+#   detected_licenses: ["MIT", "Apache-2.0"]  # MIT from source, Apache from parent
+#   scan_summary: "Deep scan completed. found 2 licenses. (includes parent POM license). ..."
 ```
 
 **Changes:**
-- mcp_semclone/server.py: Added Maven detection and parent POM resolution
-- Tool docstring: Documented Maven-specific behavior
-- tests/test_server.py: Added test_maven_parent_pom_resolution
+- mcp_semclone/server.py:
+  * Added detailed 3-source license detection comment (lines 2059-2068)
+  * Maven parent POM resolution with ClearlyDefined API integration
+  * Combines parent POM license with source header licenses
+  * Enhanced summary showing "(includes parent POM license)"
+- Tool docstring: Documented Maven-specific behavior with all three sources
+- tests/test_server.py:
+  * Added test_maven_parent_pom_resolution (parent POM only)
+  * Added test_maven_combined_source_and_parent_pom_licenses (both sources)
 
 **Impact:**
-- ✅ Maven packages now correctly report licenses from parent POMs
-- ✅ Automatic detection - no user action needed
-- ✅ Tracks license source for transparency
+- ✅ Maven packages now report licenses from ALL sources (source headers + parent POM)
+- ✅ Source header licenses (MIT, BSD) combined with parent POM licenses (Apache-2.0)
+- ✅ Automatic detection - no user configuration needed
+- ✅ Transparent tracking with `license_source` metadata field
+- ✅ Enhanced summary indicates when parent POM was used
 - ✅ Falls back gracefully if parent POM resolution fails
 
 ## [1.5.8] - 2025-01-13
