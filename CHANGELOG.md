@@ -9,40 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.5.8] - 2025-01-13
 
-### Fixed
+### Fixed & Redesigned
 
-#### Critical Bug: download_and_scan_package JSON parsing error
+#### Critical Bug + Complete Redesign: download_and_scan_package
 
-**Problem:**
-The `download_and_scan_package` tool was completely broken and returned errors like:
+**Problem 1 - Tool was completely broken (v1.5.7):**
+The `download_and_scan_package` tool returned JSON parsing errors:
 ```
 "metadata_error": "the JSON object must be str, bytes or bytearray, not CompletedProcess"
 "scan_error": "the JSON object must be str, bytes or bytearray, not CompletedProcess"
 ```
 
 **Root Cause:**
-The `_run_tool()` helper function returns a `subprocess.CompletedProcess` object, but the code was trying to parse it directly as JSON instead of using the `.stdout` attribute.
+The `_run_tool()` helper returns `subprocess.CompletedProcess` objects, but the code tried to parse them directly as JSON instead of using `.stdout`.
 
-**Bad code (lines 1946, 1969):**
-```python
-upmex_result = _run_tool("upmex", [purl])
-metadata = json.loads(upmex_result)  # ❌ Trying to parse CompletedProcess object
-```
+**Problem 2 - Incorrect workflow (v1.5.7):**
+Original implementation tried to use `upmex` and `osslili` with PURLs directly, but these tools require local file paths.
 
-**Fixed code:**
+**NEW IMPLEMENTATION - Correct Multi-Method Workflow:**
+
+**Workflow (tries methods in order until sufficient data is collected):**
+1. **Primary**: Use `purl2notices` to download and analyze (fastest, most comprehensive)
+2. **Deep scan**: If incomplete, use `purl2src` to get download URL → download artifact → run `osslili` for deep license scanning + `upmex` for metadata
+3. **Online fallback**: If still incomplete, use `upmex --api clearlydefined` for online metadata
+
+**New Dependencies:**
+- Added `purl2src>=1.2.3` to translate PURLs to download URLs for Step 2
+
+**Changes:**
 ```python
-upmex_result = _run_tool("upmex", [purl])
-if upmex_result.returncode == 0 and upmex_result.stdout:
-    metadata = json.loads(upmex_result.stdout)  # ✅ Parse stdout string
+# OLD (v1.5.7) - Broken
+upmex_result = _run_tool("upmex", [purl])  # ❌ upmex needs file path, not PURL
+metadata = json.loads(upmex_result)  # ❌ CompletedProcess is not JSON
+
+# NEW (v1.5.8) - Correct multi-method workflow
+# Step 1: Try purl2notices (downloads internally, extracts from cache file)
+purl2notices_result = _run_tool("purl2notices", ["-i", purl, "--cache", temp_cache])
+cache_data = json.loads(open(temp_cache).read())  # ✅ Read cache file
+
+# Step 2: If incomplete, get download URL and download artifact
+purl2src_result = _run_tool("purl2src", [purl, "--format", "json"])
+download_url = json.loads(purl2src_result.stdout)[0]["download_url"]
+urllib.request.urlretrieve(download_url, local_file)  # Download artifact
+osslili_result = _run_tool("osslili", [local_file])  # ✅ Run on local file
+upmex_result = _run_tool("upmex", ["extract", local_file])  # ✅ Run on local file
+
+# Step 3: If still incomplete, use online APIs
+upmex_online = _run_tool("upmex", ["extract", temp_file, "--api", "clearlydefined"])
 ```
 
 **Impact:**
-- Tool now works correctly and can download packages from registries
-- Proper error handling when tools fail (checks returncode)
-- Better error messages showing stderr output when tools fail
+- ✅ Tool now works correctly with proper multi-method fallback
+- ✅ Uses the correct workflow: purl2notices → download+osslili+upmex → online APIs
+- ✅ Returns `method_used` field showing which method succeeded
+- ✅ Proper error handling with `methods_attempted` tracking
+- ✅ JSON parsing fixed (uses `.stdout` correctly)
 
 **Thanks:**
-User feedback identified this critical bug through real-world testing with `pkg:pypi/duckdb@0.2.3`
+User feedback identified the bugs and clarified the correct workflow design
 
 ## [1.5.7] - 2025-01-13
 

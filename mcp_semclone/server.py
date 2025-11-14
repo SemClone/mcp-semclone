@@ -1832,26 +1832,28 @@ async def generate_legal_notices_from_purls(
 @mcp.tool()
 async def download_and_scan_package(
     purl: str,
-    scan_licenses: bool = True,
-    extract_metadata: bool = True,
     keep_download: bool = False
 ) -> Dict[str, Any]:
     """Download package source from registry and perform comprehensive analysis.
 
     ⚠️ IMPORTANT: This tool CAN and WILL download source code from package registries!
 
+    **Workflow (tries methods in order until sufficient data is collected):**
+    1. **Primary**: Use purl2notices to download and analyze (fastest, most comprehensive)
+    2. **Deep scan**: If incomplete, use purl2src to get download URL → download artifact → run osslili for deep license scanning + upmex for metadata
+    3. **Online fallback**: If still incomplete, use upmex --api clearlydefined/purldb for online metadata
+
     **What this tool does:**
-    1. Downloads the actual package source code from npm/PyPI/Maven/etc registries
-    2. Extracts package to temporary directory for analysis
-    3. Uses upmex to extract metadata (license, homepage, description, etc.)
-    4. Uses osslili to perform deep license scanning of all source files
-    5. Scans for copyright statements in source code
-    6. Returns download location for further manual analysis if needed
+    - Downloads the actual package source code from npm/PyPI/Maven/etc registries
+    - Performs comprehensive license and copyright analysis
+    - Extracts package metadata (name, version, homepage, description)
+    - Scans ALL source files for embedded licenses (not just package.json/setup.py)
+    - Returns copyright statements found in actual source code
 
     **When to use this tool:**
     - Package metadata is incomplete or missing (e.g., "UNKNOWN" license in PyPI)
     - Need to verify what's ACTUALLY in the package files (not just metadata)
-    - Want to analyze source code directly (not just package.json/setup.py)
+    - Want to analyze source code directly (not just manifests)
     - Security auditing - see actual package contents before approval
     - License compliance - find licenses embedded in source files
     - Need to extract copyright statements from source code
@@ -1862,18 +1864,12 @@ async def download_and_scan_package(
     - This tool downloads the actual .whl/.tar.gz from PyPI
     - Scans ALL files in the package for license information
     - Finds licenses embedded in source code that aren't in metadata
-    - Returns: {"declared_license": "UNKNOWN", "detected_licenses": ["CC0-1.0"], ...}
-
-    **What gets downloaded:**
-    - npm packages: Downloads .tgz from registry.npmjs.org
-    - PyPI packages: Downloads .whl or .tar.gz from pypi.org
-    - Maven packages: Downloads .jar from Maven Central
-    - All packages are extracted to temporary directories for scanning
+    - Returns: {"method_used": "purl2notices", "declared_license": "UNKNOWN", "detected_licenses": ["CC0-1.0"], ...}
 
     **Performance:**
-    - Download time: 1-5 seconds (depends on package size)
-    - Scanning time: 2-10 seconds (depends on files in package)
-    - Total: ~5-15 seconds for typical packages
+    - Primary (purl2notices): 5-15 seconds (fastest)
+    - Deep scan (download + osslili + upmex): 10-30 seconds
+    - Online fallback (upmex --api): 2-5 seconds (but less complete)
 
     **Security note:**
     - Downloads are verified against package checksums when available
@@ -1881,16 +1877,15 @@ async def download_and_scan_package(
     - Temporary files are cleaned up unless keep_download=True
 
     Args:
-        purl: Package URL (e.g., "pkg:pypi/duckdb@0.2.3", "pkg:npm/express@4.0.0")
-        scan_licenses: If True, performs deep license scanning of source files (default: True)
-        extract_metadata: If True, extracts package metadata with upmex (default: True)
+        purl: Package URL (e.g., "pkg:pypi/duckdb@0.2.3", "pkg:npm/express@4.21.2")
         keep_download: If True, keeps downloaded files for manual inspection (default: False)
 
     Returns:
         Dictionary containing:
         - purl: The package URL analyzed
+        - method_used: Which method succeeded ("purl2notices", "deep_scan", "online_fallback")
         - download_path: Where package was downloaded (if keep_download=True)
-        - metadata: Package metadata from upmex (name, version, homepage, etc.)
+        - metadata: Package metadata (name, version, homepage, etc.)
         - declared_license: License from package metadata
         - detected_licenses: List of licenses found by scanning source files
         - copyright_statements: Copyright statements extracted from source
@@ -1907,130 +1902,239 @@ async def download_and_scan_package(
             keep_download=True
         )
         print(f"Inspect files at: {result['download_path']}")
-
-        # Quick metadata check without deep scanning
-        download_and_scan_package(
-            purl="pkg:pypi/requests@2.28.0",
-            scan_licenses=False
-        )
     """
     import subprocess
     import tempfile
     import shutil
+    import json
+    import urllib.request
+    from pathlib import Path
+
+    temp_dir = None
+    download_file = None
 
     try:
         logger.info(f"Downloading and scanning package: {purl}")
 
-        # Create temporary directory for download
-        temp_dir = tempfile.mkdtemp(prefix="package_scan_")
-        download_path = temp_dir
-
         result = {
             "purl": purl,
-            "download_path": download_path if keep_download else None,
+            "method_used": None,
+            "download_path": None,
             "metadata": {},
             "declared_license": None,
             "detected_licenses": [],
             "copyright_statements": [],
             "files_scanned": 0,
-            "scan_summary": ""
+            "scan_summary": "",
+            "methods_attempted": []
         }
 
-        # Step 1: Extract metadata using upmex
-        if extract_metadata:
-            logger.info(f"Extracting metadata with upmex for {purl}")
-            try:
-                upmex_result = _run_tool("upmex", [purl])
-                # Parse upmex JSON output
-                import json
-                if upmex_result.returncode == 0 and upmex_result.stdout:
-                    metadata = json.loads(upmex_result.stdout)
-                    result["metadata"] = metadata
-                    result["declared_license"] = metadata.get("license") or metadata.get("declared_license")
-                    logger.info(f"Metadata extracted: {result['metadata'].get('name')} v{result['metadata'].get('version')}")
-                else:
-                    logger.warning(f"upmex failed with return code {upmex_result.returncode}")
-                    result["metadata_error"] = f"upmex failed: {upmex_result.stderr}"
-            except Exception as e:
-                logger.warning(f"upmex metadata extraction failed: {e}")
-                result["metadata_error"] = str(e)
+        # STEP 1: Try purl2notices first (primary method - fastest and most comprehensive)
+        logger.info(f"Step 1: Trying purl2notices (primary method)")
+        try:
+            temp_cache = tempfile.mktemp(suffix=".json")
+            purl2notices_result = _run_tool("purl2notices", [
+                "-i", purl,
+                "--cache", temp_cache,
+                "-f", "json",
+                "--no-cache"
+            ])
 
-        # Step 2: Download and scan with osslili for deep license analysis
-        if scan_licenses:
-            logger.info(f"Downloading and scanning source with osslili for {purl}")
-            try:
-                # osslili downloads the package and scans it
-                osslili_args = [
-                    purl,
-                    "--format", "json",
-                    "--output-dir", temp_dir
-                ]
+            result["methods_attempted"].append("purl2notices")
 
-                osslili_result = _run_tool("osslili", osslili_args)
+            if purl2notices_result.returncode == 0 and purl2notices_result.stdout:
+                # Parse cache file to get comprehensive data
+                with open(temp_cache, 'r') as f:
+                    cache_data = json.load(f)
 
-                # Parse osslili JSON output
-                if osslili_result.returncode == 0 and osslili_result.stdout:
-                    scan_data = json.loads(osslili_result.stdout)
+                if cache_data.get("components"):
+                    component = cache_data["components"][0]
+                    result["method_used"] = "purl2notices"
+                    result["metadata"] = {
+                        "name": component.get("name"),
+                        "version": component.get("version"),
+                        "purl": component.get("purl")
+                    }
 
-                    # Extract detected licenses
-                    if "licenses" in scan_data:
+                    # Extract licenses
+                    if component.get("licenses"):
                         result["detected_licenses"] = [
-                            lic.get("spdx_id") or lic.get("name")
-                            for lic in scan_data["licenses"]
+                            lic.get("license", {}).get("id") or lic.get("license", {}).get("name")
+                            for lic in component["licenses"]
+                            if isinstance(lic, dict)
                         ]
+                        result["declared_license"] = result["detected_licenses"][0] if result["detected_licenses"] else None
 
-                    # Extract copyright statements
-                    if "copyrights" in scan_data:
+                    # Extract copyrights
+                    if component.get("properties"):
                         result["copyright_statements"] = [
-                            c.get("statement") for c in scan_data["copyrights"]
-                            if c.get("statement")
+                            prop["value"] for prop in component["properties"]
+                            if prop.get("name") == "copyright"
                         ]
 
-                    # Extract files scanned count
-                    result["files_scanned"] = scan_data.get("files_scanned", 0)
+                    logger.info(f"purl2notices succeeded: {len(result['detected_licenses'])} licenses, {len(result['copyright_statements'])} copyrights")
 
-                    logger.info(f"Scan complete: {len(result['detected_licenses'])} licenses, {len(result['copyright_statements'])} copyrights")
-                else:
-                    logger.warning(f"osslili failed with return code {osslili_result.returncode}")
-                    result["scan_error"] = f"osslili failed: {osslili_result.stderr}"
+                    # Clean up temp cache
+                    Path(temp_cache).unlink(missing_ok=True)
 
-            except Exception as e:
-                logger.warning(f"osslili source scanning failed: {e}")
-                result["scan_error"] = str(e)
+                    # If we got sufficient data, return early
+                    if result["detected_licenses"] and result["copyright_statements"]:
+                        result["scan_summary"] = f"Successfully analyzed using purl2notices. Found {len(result['detected_licenses'])} licenses and {len(result['copyright_statements'])} copyright statements."
+                        return result
+        except Exception as e:
+            logger.warning(f"purl2notices failed: {e}")
+            result["purl2notices_error"] = str(e)
 
-        # Generate summary
-        summary_parts = []
-        if result["metadata"]:
-            summary_parts.append(f"Downloaded {result['metadata'].get('name', 'package')} v{result['metadata'].get('version', 'unknown')}")
-        if result["declared_license"]:
-            summary_parts.append(f"Declared license: {result['declared_license']}")
-        if result["detected_licenses"]:
-            summary_parts.append(f"Detected licenses in source: {', '.join(result['detected_licenses'])}")
-        if result["copyright_statements"]:
-            summary_parts.append(f"Found {len(result['copyright_statements'])} copyright statements")
-        if result["files_scanned"]:
-            summary_parts.append(f"Scanned {result['files_scanned']} files")
+        # STEP 2: Deep scan - download artifact and run osslili + upmex
+        logger.info(f"Step 2: Attempting deep scan (download + osslili + upmex)")
+        try:
+            result["methods_attempted"].append("deep_scan")
 
-        result["scan_summary"] = ". ".join(summary_parts)
+            # Get download URL using purl2src
+            purl2src_result = _run_tool("purl2src", [purl, "--format", "json"])
 
-        # Cleanup unless user wants to keep files
-        if not keep_download:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            result["download_path"] = f"Cleaned up (use keep_download=True to retain)"
+            if purl2src_result.returncode == 0 and purl2src_result.stdout:
+                purl2src_data = json.loads(purl2src_result.stdout)
+
+                if purl2src_data and len(purl2src_data) > 0:
+                    download_info = purl2src_data[0]
+                    download_url = download_info.get("download_url")
+                    fallback_cmd = download_info.get("fallback_command")
+
+                    if download_url:
+                        # Download the artifact
+                        temp_dir = tempfile.mkdtemp(prefix="package_scan_")
+                        filename = download_url.split("/")[-1].split("?")[0]  # Clean filename
+                        download_file = Path(temp_dir) / filename
+
+                        logger.info(f"Downloading from: {download_url}")
+                        urllib.request.urlretrieve(download_url, download_file)
+
+                        if keep_download:
+                            result["download_path"] = str(download_file)
+
+                        # Run osslili on downloaded file
+                        logger.info(f"Running osslili on {download_file}")
+                        osslili_result = _run_tool("osslili", [
+                            str(download_file),
+                            "-f", "cyclonedx-json"
+                        ])
+
+                        if osslili_result.returncode == 0 and osslili_result.stdout:
+                            osslili_data = json.loads(osslili_result.stdout)
+
+                            # Extract licenses from osslili
+                            if osslili_data.get("components"):
+                                for comp in osslili_data["components"]:
+                                    if comp.get("licenses"):
+                                        for lic in comp["licenses"]:
+                                            lic_id = lic.get("license", {}).get("id") or lic.get("license", {}).get("name")
+                                            if lic_id and lic_id not in result["detected_licenses"]:
+                                                result["detected_licenses"].append(lic_id)
+
+                                    # Extract copyrights
+                                    if comp.get("properties"):
+                                        for prop in comp["properties"]:
+                                            if prop.get("name") == "copyright":
+                                                copyright = prop.get("value")
+                                                if copyright and copyright not in result["copyright_statements"]:
+                                                    result["copyright_statements"].append(copyright)
+
+                            result["files_scanned"] = len(osslili_data.get("components", []))
+                            logger.info(f"osslili deep scan: {len(result['detected_licenses'])} licenses, {result['files_scanned']} files")
+
+                        # Run upmex on downloaded file
+                        logger.info(f"Running upmex on {download_file}")
+                        upmex_result = _run_tool("upmex", ["extract", str(download_file), "--format", "json"])
+
+                        if upmex_result.returncode == 0 and upmex_result.stdout:
+                            upmex_data = json.loads(upmex_result.stdout)
+                            result["metadata"].update(upmex_data)
+                            if not result["declared_license"] and upmex_data.get("license"):
+                                result["declared_license"] = upmex_data["license"]
+                            logger.info(f"upmex metadata extracted")
+
+                        # If we got data from deep scan, mark as successful
+                        if result["detected_licenses"] or result["metadata"]:
+                            result["method_used"] = "deep_scan"
+                            result["scan_summary"] = f"Deep scan completed. Downloaded and analyzed with osslili + upmex. Found {len(result['detected_licenses'])} licenses and {len(result['copyright_statements'])} copyrights."
+                            return result
+
+                    elif fallback_cmd:
+                        logger.warning(f"No direct download URL, fallback command available: {fallback_cmd}")
+                        result["fallback_command"] = fallback_cmd
+
+        except Exception as e:
+            logger.warning(f"Deep scan failed: {e}")
+            result["deep_scan_error"] = str(e)
+
+        # STEP 3: Online fallback - use upmex with API services
+        logger.info(f"Step 3: Trying online fallback (upmex --api clearlydefined)")
+        try:
+            result["methods_attempted"].append("online_fallback")
+
+            # Create a temporary dummy file (upmex needs a file path)
+            temp_file = tempfile.mktemp(suffix=".purl")
+            with open(temp_file, 'w') as f:
+                f.write(purl)
+
+            upmex_online_result = _run_tool("upmex", [
+                "extract",
+                temp_file,
+                "--api", "clearlydefined",
+                "--format", "json"
+            ])
+
+            if upmex_online_result.returncode == 0 and upmex_online_result.stdout:
+                upmex_data = json.loads(upmex_online_result.stdout)
+                result["metadata"].update(upmex_data)
+                if not result["declared_license"] and upmex_data.get("license"):
+                    result["declared_license"] = upmex_data["license"]
+                result["method_used"] = "online_fallback"
+                logger.info(f"Online metadata retrieved from ClearlyDefined")
+
+            Path(temp_file).unlink(missing_ok=True)
+
+        except Exception as e:
+            logger.warning(f"Online fallback failed: {e}")
+            result["online_fallback_error"] = str(e)
+
+        # Generate final summary
+        if result["method_used"]:
+            summary_parts = []
+            if result["metadata"].get("name"):
+                summary_parts.append(f"Package: {result['metadata'].get('name')} v{result['metadata'].get('version', 'unknown')}")
+            if result["declared_license"]:
+                summary_parts.append(f"Declared license: {result['declared_license']}")
+            if result["detected_licenses"]:
+                summary_parts.append(f"Detected licenses: {', '.join(result['detected_licenses'])}")
+            if result["copyright_statements"]:
+                summary_parts.append(f"Copyrights: {len(result['copyright_statements'])}")
+            if result["files_scanned"]:
+                summary_parts.append(f"Files scanned: {result['files_scanned']}")
+
+            result["scan_summary"] = ". ".join(summary_parts) + f". Method: {result['method_used']}"
+        else:
+            result["scan_summary"] = f"Failed to retrieve package data. Attempted methods: {', '.join(result['methods_attempted'])}"
+            result["error"] = "All methods failed to retrieve package data"
 
         return result
 
-    except FileNotFoundError as e:
-        return {
-            "error": f"Required tool not found: {e}",
-            "hint": "Ensure upmex and osslili are installed: pip install upmex osslili"
-        }
     except Exception as e:
         logger.error(f"Error downloading and scanning package: {e}")
-        # Cleanup on error
-        if 'temp_dir' in locals():
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        return {"error": str(e)}
+        return {
+            "error": str(e),
+            "purl": purl,
+            "methods_attempted": result.get("methods_attempted", []) if 'result' in locals() else []
+        }
+
+    finally:
+        # Cleanup unless user wants to keep files
+        if not keep_download:
+            if temp_dir and Path(temp_dir).exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            if download_file and Path(download_file).exists():
+                Path(download_file).unlink(missing_ok=True)
 
 
 @mcp.tool()

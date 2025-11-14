@@ -38,6 +38,7 @@ classifiers = [
 dependencies = [
     "mcp>=1.0.0",
     "purl2notices>=1.2.7",  # Primary scanning tool for scan_directory and SBOM generation
+    "purl2src>=1.2.3",  # Used by download_and_scan_package to get artifact download URLs
     "ossnotices>=1.0.2",  # Simplified wrapper for legal notices generation
     "binarysniffer>=1.11.3",
     "ospac>=1.2.3",
