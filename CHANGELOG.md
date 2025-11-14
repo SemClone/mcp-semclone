@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.8] - 2025-01-13
+
+### Fixed
+
+#### Critical Bug: download_and_scan_package JSON parsing error
+
+**Problem:**
+The `download_and_scan_package` tool was completely broken and returned errors like:
+```
+"metadata_error": "the JSON object must be str, bytes or bytearray, not CompletedProcess"
+"scan_error": "the JSON object must be str, bytes or bytearray, not CompletedProcess"
+```
+
+**Root Cause:**
+The `_run_tool()` helper function returns a `subprocess.CompletedProcess` object, but the code was trying to parse it directly as JSON instead of using the `.stdout` attribute.
+
+**Bad code (lines 1946, 1969):**
+```python
+upmex_result = _run_tool("upmex", [purl])
+metadata = json.loads(upmex_result)  # ❌ Trying to parse CompletedProcess object
+```
+
+**Fixed code:**
+```python
+upmex_result = _run_tool("upmex", [purl])
+if upmex_result.returncode == 0 and upmex_result.stdout:
+    metadata = json.loads(upmex_result.stdout)  # ✅ Parse stdout string
+```
+
+**Impact:**
+- Tool now works correctly and can download packages from registries
+- Proper error handling when tools fail (checks returncode)
+- Better error messages showing stderr output when tools fail
+
+**Thanks:**
+User feedback identified this critical bug through real-world testing with `pkg:pypi/duckdb@0.2.3`
+
 ## [1.5.7] - 2025-01-13
 
 ### Added

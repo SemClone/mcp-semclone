@@ -1943,11 +1943,14 @@ async def download_and_scan_package(
                 upmex_result = _run_tool("upmex", [purl])
                 # Parse upmex JSON output
                 import json
-                metadata = json.loads(upmex_result)
-                result["metadata"] = metadata
-                result["declared_license"] = metadata.get("license") or metadata.get("declared_license")
-
-                logger.info(f"Metadata extracted: {result['metadata'].get('name')} v{result['metadata'].get('version')}")
+                if upmex_result.returncode == 0 and upmex_result.stdout:
+                    metadata = json.loads(upmex_result.stdout)
+                    result["metadata"] = metadata
+                    result["declared_license"] = metadata.get("license") or metadata.get("declared_license")
+                    logger.info(f"Metadata extracted: {result['metadata'].get('name')} v{result['metadata'].get('version')}")
+                else:
+                    logger.warning(f"upmex failed with return code {upmex_result.returncode}")
+                    result["metadata_error"] = f"upmex failed: {upmex_result.stderr}"
             except Exception as e:
                 logger.warning(f"upmex metadata extraction failed: {e}")
                 result["metadata_error"] = str(e)
@@ -1966,26 +1969,30 @@ async def download_and_scan_package(
                 osslili_result = _run_tool("osslili", osslili_args)
 
                 # Parse osslili JSON output
-                scan_data = json.loads(osslili_result)
+                if osslili_result.returncode == 0 and osslili_result.stdout:
+                    scan_data = json.loads(osslili_result.stdout)
 
-                # Extract detected licenses
-                if "licenses" in scan_data:
-                    result["detected_licenses"] = [
-                        lic.get("spdx_id") or lic.get("name")
-                        for lic in scan_data["licenses"]
-                    ]
+                    # Extract detected licenses
+                    if "licenses" in scan_data:
+                        result["detected_licenses"] = [
+                            lic.get("spdx_id") or lic.get("name")
+                            for lic in scan_data["licenses"]
+                        ]
 
-                # Extract copyright statements
-                if "copyrights" in scan_data:
-                    result["copyright_statements"] = [
-                        c.get("statement") for c in scan_data["copyrights"]
-                        if c.get("statement")
-                    ]
+                    # Extract copyright statements
+                    if "copyrights" in scan_data:
+                        result["copyright_statements"] = [
+                            c.get("statement") for c in scan_data["copyrights"]
+                            if c.get("statement")
+                        ]
 
-                # Extract files scanned count
-                result["files_scanned"] = scan_data.get("files_scanned", 0)
+                    # Extract files scanned count
+                    result["files_scanned"] = scan_data.get("files_scanned", 0)
 
-                logger.info(f"Scan complete: {len(result['detected_licenses'])} licenses, {len(result['copyright_statements'])} copyrights")
+                    logger.info(f"Scan complete: {len(result['detected_licenses'])} licenses, {len(result['copyright_statements'])} copyrights")
+                else:
+                    logger.warning(f"osslili failed with return code {osslili_result.returncode}")
+                    result["scan_error"] = f"osslili failed: {osslili_result.stderr}"
 
             except Exception as e:
                 logger.warning(f"osslili source scanning failed: {e}")
