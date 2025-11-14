@@ -524,3 +524,206 @@ class TestRunTool:
 
             with pytest.raises(FileNotFoundError):
                 _run_tool("nonexistent_tool", ["--help"])
+
+class TestDownloadAndScanPackage:
+    """Test cases for download_and_scan_package tool."""
+
+    @pytest.mark.asyncio
+    async def test_purl2notices_success(self):
+        """Test successful analysis using purl2notices (primary method)."""
+        # Mock purl2notices cache output
+        cache_data = {
+            "components": [{
+                "name": "express",
+                "version": "4.21.2",
+                "purl": "pkg:npm/express@4.21.2",
+                "licenses": [
+                    {"license": {"id": "MIT"}},
+                    {"license": {"id": "MIT-or-later"}}
+                ],
+                "properties": [
+                    {"name": "copyright", "value": "Copyright 2009-2013 TJ Holowaychuk"},
+                    {"name": "copyright", "value": "Copyright 2014-2015 Douglas Christopher Wilson"}
+                ]
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("builtins.open", create=True) as mock_open, \
+             patch("pathlib.Path.unlink"):
+            
+            # Mock purl2notices execution
+            mock_run.return_value = MagicMock(returncode=0, stdout="success")
+            
+            # Mock cache file read
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(cache_data)
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2"
+            )
+
+            # Verify method used
+            assert result["method_used"] == "purl2notices"
+            assert result["purl"] == "pkg:npm/express@4.21.2"
+            
+            # Verify data extracted
+            assert result["metadata"]["name"] == "express"
+            assert result["metadata"]["version"] == "4.21.2"
+            assert "MIT" in result["detected_licenses"]
+            assert len(result["copyright_statements"]) == 2
+            assert "purl2notices" in result["methods_attempted"]
+
+    @pytest.mark.asyncio
+    async def test_deep_scan_fallback(self):
+        """Test deep scan fallback when purl2notices fails."""
+        # Mock purl2src output
+        purl2src_data = [{
+            "purl": "pkg:npm/express@4.21.2",
+            "download_url": "https://registry.npmjs.org/express/-/express-4.21.2.tgz",
+            "validated": True
+        }]
+
+        # Mock osslili output
+        osslili_data = {
+            "components": [{
+                "licenses": [{"license": {"id": "MIT"}}],
+                "properties": [
+                    {"name": "copyright", "value": "Copyright Test"}
+                ]
+            }]
+        }
+
+        # Mock upmex output
+        upmex_data = {
+            "name": "express",
+            "version": "4.21.2",
+            "license": "MIT"
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve") as mock_download, \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            def run_tool_side_effect(tool_name, args, *a, **kw):
+                if tool_name == "purl2notices":
+                    # purl2notices fails
+                    return MagicMock(returncode=1, stdout="", stderr="failed")
+                elif tool_name == "purl2src":
+                    return MagicMock(returncode=0, stdout=json.dumps(purl2src_data))
+                elif tool_name == "osslili":
+                    return MagicMock(returncode=0, stdout=json.dumps(osslili_data))
+                elif tool_name == "upmex":
+                    return MagicMock(returncode=0, stdout=json.dumps(upmex_data))
+                return MagicMock(returncode=1, stdout="")
+
+            mock_run.side_effect = run_tool_side_effect
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2"
+            )
+
+            # Verify deep scan was used
+            assert result["method_used"] == "deep_scan"
+            assert "purl2notices" in result["methods_attempted"]
+            assert "deep_scan" in result["methods_attempted"]
+            
+            # Verify download was called
+            mock_download.assert_called_once()
+            
+            # Verify data extracted
+            assert "MIT" in result["detected_licenses"]
+            assert len(result["copyright_statements"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_online_fallback(self):
+        """Test online fallback when deep scan fails."""
+        # Mock upmex online output
+        upmex_data = {
+            "name": "express",
+            "version": "4.21.2",
+            "license": "MIT"
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("builtins.open", create=True), \
+             patch("pathlib.Path.unlink"):
+
+            def run_tool_side_effect(tool_name, args, *a, **kw):
+                if tool_name == "purl2notices":
+                    # purl2notices fails
+                    return MagicMock(returncode=1, stdout="", stderr="failed")
+                elif tool_name == "purl2src":
+                    # purl2src fails (no download URL)
+                    return MagicMock(returncode=1, stdout="[]")
+                elif tool_name == "upmex" and "--api" in args:
+                    # Online API succeeds
+                    return MagicMock(returncode=0, stdout=json.dumps(upmex_data))
+                return MagicMock(returncode=1, stdout="")
+
+            mock_run.side_effect = run_tool_side_effect
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:pypi/somepackage@1.0.0"
+            )
+
+            # Verify online fallback was used
+            assert result["method_used"] == "online_fallback"
+            assert "purl2notices" in result["methods_attempted"]
+            assert "deep_scan" in result["methods_attempted"]
+            assert "online_fallback" in result["methods_attempted"]
+            
+            # Verify metadata extracted
+            assert result["metadata"]["license"] == "MIT"
+
+    @pytest.mark.asyncio
+    async def test_all_methods_fail(self):
+        """Test behavior when all methods fail."""
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("builtins.open", create=True), \
+             patch("pathlib.Path.unlink"):
+
+            # All tools fail
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="failed")
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/invalid@0.0.0"
+            )
+
+            # Verify error state
+            assert result["method_used"] is None
+            assert result["error"] == "All methods failed to retrieve package data"
+            assert len(result["methods_attempted"]) == 3
+            assert "purl2notices" in result["methods_attempted"]
+            assert "deep_scan" in result["methods_attempted"]
+            assert "online_fallback" in result["methods_attempted"]
+
+    @pytest.mark.asyncio
+    async def test_keep_download(self):
+        """Test that keep_download preserves downloaded files."""
+        cache_data = {
+            "components": [{
+                "name": "express",
+                "version": "4.21.2",
+                "purl": "pkg:npm/express@4.21.2",
+                "licenses": [{"license": {"id": "MIT"}}],
+                "properties": []
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("builtins.open", create=True) as mock_open, \
+             patch("pathlib.Path.unlink"), \
+             patch("shutil.rmtree") as mock_rmtree:
+            
+            mock_run.return_value = MagicMock(returncode=0, stdout="success")
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(cache_data)
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2",
+                keep_download=True
+            )
+
+            # Verify cleanup was NOT called (keep_download=True)
+            mock_rmtree.assert_not_called()
