@@ -727,3 +727,142 @@ class TestDownloadAndScanPackage:
 
             # Verify cleanup was NOT called (keep_download=True)
             mock_rmtree.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_maven_parent_pom_resolution(self):
+        """Test Maven parent POM license resolution when package POM has no license."""
+        # Mock purl2src output for Maven package
+        purl2src_data = [{
+            "purl": "pkg:maven/org.example/library@1.0.0",
+            "download_url": "https://repo1.maven.org/maven2/org/example/library/1.0.0/library-1.0.0.jar",
+            "validated": True
+        }]
+
+        # Mock osslili output (no licenses found in JAR)
+        osslili_data = {
+            "components": []
+        }
+
+        # Mock upmex output (no license in package POM)
+        upmex_no_license = {
+            "name": "library",
+            "version": "1.0.0"
+            # No license field
+        }
+
+        # Mock upmex with --registry --api clearlydefined (finds parent POM license)
+        upmex_with_parent = {
+            "name": "library",
+            "version": "1.0.0",
+            "license": "Apache-2.0"  # Found in parent POM
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve") as mock_download, \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            call_count = {"upmex": 0}
+
+            def run_tool_side_effect(tool_name, args, *a, **kw):
+                if tool_name == "purl2notices":
+                    # purl2notices fails
+                    return MagicMock(returncode=1, stdout="", stderr="failed")
+                elif tool_name == "purl2src":
+                    return MagicMock(returncode=0, stdout=json.dumps(purl2src_data))
+                elif tool_name == "osslili":
+                    return MagicMock(returncode=0, stdout=json.dumps(osslili_data))
+                elif tool_name == "upmex":
+                    call_count["upmex"] += 1
+                    # First call: no license
+                    if call_count["upmex"] == 1:
+                        return MagicMock(returncode=0, stdout=json.dumps(upmex_no_license))
+                    # Second call with --registry --api: has license from parent POM
+                    elif "--registry" in args and "--api" in args:
+                        return MagicMock(returncode=0, stdout=json.dumps(upmex_with_parent))
+                return MagicMock(returncode=1, stdout="")
+
+            mock_run.side_effect = run_tool_side_effect
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:maven/org.example/library@1.0.0"
+            )
+
+            # Verify Maven parent POM resolution was triggered
+            assert result["declared_license"] == "Apache-2.0"
+            assert result["metadata"].get("license") == "Apache-2.0"
+            assert result["metadata"].get("license_source") == "parent_pom_via_clearlydefined"
+            
+            # Verify upmex was called twice (once normal, once with --registry --api)
+            assert call_count["upmex"] == 2
+
+    @pytest.mark.asyncio
+    async def test_maven_combined_source_and_parent_pom_licenses(self):
+        """Test Maven package with licenses in both source headers AND parent POM."""
+        # Mock purl2src output
+        purl2src_data = [{
+            "purl": "pkg:maven/org.example/library@1.0.0",
+            "download_url": "https://repo1.maven.org/maven2/org/example/library/1.0.0/library-1.0.0.jar",
+            "validated": True
+        }]
+
+        # Mock osslili output (finds MIT in source file headers)
+        osslili_data = {
+            "components": [{
+                "licenses": [{"license": {"id": "MIT"}}],
+                "properties": [{"name": "copyright", "value": "Copyright 2024"}]
+            }]
+        }
+
+        # Mock upmex output (no license in package POM)
+        upmex_no_license = {
+            "name": "library",
+            "version": "1.0.0"
+        }
+
+        # Mock upmex with --registry --api (finds Apache-2.0 in parent POM)
+        upmex_with_parent = {
+            "name": "library",
+            "version": "1.0.0",
+            "license": "Apache-2.0"
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve"), \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            call_count = {"upmex": 0}
+
+            def run_tool_side_effect(tool_name, args, *a, **kw):
+                if tool_name == "purl2notices":
+                    return MagicMock(returncode=1, stdout="", stderr="failed")
+                elif tool_name == "purl2src":
+                    return MagicMock(returncode=0, stdout=json.dumps(purl2src_data))
+                elif tool_name == "osslili":
+                    return MagicMock(returncode=0, stdout=json.dumps(osslili_data))
+                elif tool_name == "upmex":
+                    call_count["upmex"] += 1
+                    if call_count["upmex"] == 1:
+                        return MagicMock(returncode=0, stdout=json.dumps(upmex_no_license))
+                    elif "--registry" in args and "--api" in args:
+                        return MagicMock(returncode=0, stdout=json.dumps(upmex_with_parent))
+                return MagicMock(returncode=1, stdout="")
+
+            mock_run.side_effect = run_tool_side_effect
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:maven/org.example/library@1.0.0"
+            )
+
+            # Verify BOTH licenses are present
+            assert result["declared_license"] == "Apache-2.0"  # From parent POM
+            assert "MIT" in result["detected_licenses"]  # From source headers
+            assert "Apache-2.0" in result["detected_licenses"]  # Added from parent POM
+            assert len(result["detected_licenses"]) == 2  # Both licenses
+            assert result["metadata"].get("license_source") == "parent_pom_via_clearlydefined"
+            
+            # Verify summary mentions parent POM
+            assert "parent pom" in result["scan_summary"].lower()
