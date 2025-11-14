@@ -82,7 +82,8 @@ pipx install mcp-semclone
 # IMPORTANT: Inject all SEMCL.ONE tool dependencies into the same isolated environment
 # This ensures all tools are available both as libraries and CLI commands
 # Required by some agents that need direct CLI tool access
-pipx inject mcp-semclone purl2notices osslili binarysniffer ospac vulnq upmex
+# Use --include-apps to make CLI commands globally available
+pipx inject mcp-semclone purl2notices purl2src osslili binarysniffer ospac vulnq upmex --include-apps
 ```
 
 **Benefits of pipx:**
