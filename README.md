@@ -14,23 +14,34 @@ mcp-semclone integrates the complete SEMCL.ONE toolchain to provide LLMs with po
 - **Binary Analysis**: Analyze compiled binaries (APK, EXE, DLL, SO, JAR) for OSS components and licenses
 - **Vulnerability Assessment**: Query multiple vulnerability databases for security issues
 - **Package Discovery**: Identify packages from source code and generate PURLs
-- **SBOM Generation**: Create Software Bill of Materials in SPDX/CycloneDX formats
+- **SBOM Generation**: Create Software Bill of Materials in CycloneDX format
 - **Policy Validation**: Check license compatibility and organizational compliance
 
 ## Features
 
 ### Tools
+
+**Analysis & Scanning:**
 - `scan_directory` - Comprehensive directory scanning for packages, licenses, and vulnerabilities
 - `scan_binary` - Analyze compiled binaries (APK, EXE, DLL, SO, JAR) for OSS components
 - `check_package` - Check specific packages for licenses and vulnerabilities
+- `download_and_scan_package` - Download package source from registries and perform deep license/copyright scanning
+
+**Legal Notices & Documentation:**
+- `generate_legal_notices` - Generate legal notices by scanning source code directly (fast, recommended)
+- `generate_legal_notices_from_purls` - Generate legal notices from PURL list (downloads from registries)
+- `generate_sbom` - Generate Software Bill of Materials in CycloneDX format
+
+**License & Policy Validation:**
 - `validate_policy` - Validate licenses against organizational policies
 - `validate_license_list` - Quick license safety validation for distribution types
 - `get_license_obligations` - Get detailed compliance requirements for licenses
 - `check_license_compatibility` - Check if two licenses can be mixed
 - `get_license_details` - Get comprehensive license information including full text
 - `analyze_commercial_risk` - Assess commercial distribution risks
+
+**Complete Workflows:**
 - `run_compliance_check` - Universal one-shot compliance workflow for any project type
-- `generate_sbom` - Generate SBOM for projects
 
 ### Resources
 - `license_database` - Access license compatibility information
@@ -225,7 +236,7 @@ asyncio.run(main())
 1. **Scan project structure** to identify components
 2. **Extract metadata** for each component
 3. **Detect licenses** and copyright information
-4. **Format as SBOM** (SPDX or CycloneDX)
+4. **Format as SBOM** (CycloneDX 1.4 JSON)
 5. **Validate completeness** of the SBOM
 
 ## Architecture

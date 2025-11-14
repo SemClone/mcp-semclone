@@ -67,17 +67,19 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
          "disabled": false,
          "autoApprove": [
            "scan_directory",
+           "scan_binary",
            "check_package",
+           "download_and_scan_package",
+           "generate_legal_notices",
+           "generate_legal_notices_from_purls",
+           "generate_sbom",
            "validate_policy",
+           "validate_license_list",
            "get_license_obligations",
            "check_license_compatibility",
            "get_license_details",
            "analyze_commercial_risk",
-           "validate_license_list",
-           "run_compliance_check",
-           "generate_legal_notices",
-           "generate_sbom",
-           "scan_binary"
+           "run_compliance_check"
          ]
        }
      }
@@ -95,17 +97,19 @@ The SEMCL.ONE MCP server works with any IDE that supports the Model Context Prot
          "disabled": false,
          "autoApprove": [
            "scan_directory",
+           "scan_binary",
            "check_package",
+           "download_and_scan_package",
+           "generate_legal_notices",
+           "generate_legal_notices_from_purls",
+           "generate_sbom",
            "validate_policy",
+           "validate_license_list",
            "get_license_obligations",
            "check_license_compatibility",
            "get_license_details",
            "analyze_commercial_risk",
-           "validate_license_list",
-           "run_compliance_check",
-           "generate_legal_notices",
-           "generate_sbom",
-           "scan_binary"
+           "run_compliance_check"
          ]
        }
      }
@@ -201,17 +205,19 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
          "disabled": false,
          "autoApprove": [
            "scan_directory",
+           "scan_binary",
            "check_package",
+           "download_and_scan_package",
+           "generate_legal_notices",
+           "generate_legal_notices_from_purls",
+           "generate_sbom",
            "validate_policy",
+           "validate_license_list",
            "get_license_obligations",
            "check_license_compatibility",
            "get_license_details",
            "analyze_commercial_risk",
-           "validate_license_list",
-           "run_compliance_check",
-           "generate_legal_notices",
-           "generate_sbom",
-           "scan_binary"
+           "run_compliance_check"
          ]
        }
      }
@@ -229,17 +235,19 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
          "disabled": false,
          "autoApprove": [
            "scan_directory",
+           "scan_binary",
            "check_package",
+           "download_and_scan_package",
+           "generate_legal_notices",
+           "generate_legal_notices_from_purls",
+           "generate_sbom",
            "validate_policy",
+           "validate_license_list",
            "get_license_obligations",
            "check_license_compatibility",
            "get_license_details",
            "analyze_commercial_risk",
-           "validate_license_list",
-           "run_compliance_check",
-           "generate_legal_notices",
-           "generate_sbom",
-           "scan_binary"
+           "run_compliance_check"
          ]
        }
      }
@@ -283,9 +291,9 @@ Kiro is Amazon's new agentic AI IDE with native MCP support.
 The `autoApprove` field allows these tools to run without prompting the user:
 
 - **License Analysis**: `get_license_details`, `get_license_obligations`, `check_license_compatibility`
-- **Package Scanning**: `scan_directory`, `check_package`, `scan_binary`
+- **Package Scanning**: `scan_directory`, `scan_binary`, `check_package`, `download_and_scan_package`
 - **Policy & Risk**: `validate_policy`, `analyze_commercial_risk`, `validate_license_list`
-- **Documentation**: `generate_legal_notices`, `generate_sbom`
+- **Documentation**: `generate_legal_notices`, `generate_legal_notices_from_purls`, `generate_sbom`
 - **Complete Workflow**: `run_compliance_check` (one-shot compliance check for any project type)
 
 **Note**: Only include tools you trust to run automatically. You can remove sensitive tools if needed.
@@ -316,17 +324,19 @@ Cline is a popular AI coding extension for VS Code with native MCP support.
          "disabled": false,
          "autoApprove": [
            "scan_directory",
+           "scan_binary",
            "check_package",
+           "download_and_scan_package",
+           "generate_legal_notices",
+           "generate_legal_notices_from_purls",
+           "generate_sbom",
            "validate_policy",
+           "validate_license_list",
            "get_license_obligations",
            "check_license_compatibility",
            "get_license_details",
            "analyze_commercial_risk",
-           "validate_license_list",
-           "run_compliance_check",
-           "generate_legal_notices",
-           "generate_sbom",
-           "scan_binary"
+           "run_compliance_check"
          ]
        }
      }
@@ -344,17 +354,19 @@ Cline is a popular AI coding extension for VS Code with native MCP support.
          "disabled": false,
          "autoApprove": [
            "scan_directory",
+           "scan_binary",
            "check_package",
+           "download_and_scan_package",
+           "generate_legal_notices",
+           "generate_legal_notices_from_purls",
+           "generate_sbom",
            "validate_policy",
+           "validate_license_list",
            "get_license_obligations",
            "check_license_compatibility",
            "get_license_details",
            "analyze_commercial_risk",
-           "validate_license_list",
-           "run_compliance_check",
-           "generate_legal_notices",
-           "generate_sbom",
-           "scan_binary"
+           "run_compliance_check"
          ]
        }
      }
