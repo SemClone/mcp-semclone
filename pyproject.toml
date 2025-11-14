@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-semclone"
-version = "1.5.9"
+version = "1.6.0"
 description = "Model Context Protocol server for SEMCL.ONE OSS compliance toolchain"
 readme = "README.md"
 requires-python = ">=3.10"

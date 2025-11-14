@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.5.9] - 2025-01-13
+## [1.6.0] - 2025-01-13
 
-### Enhanced
+### Added
 
 #### Maven Parent POM License Resolution + Source Header Detection
 
@@ -40,7 +40,7 @@ download_and_scan_package(purl="pkg:maven/org.example/library@1.0.0")
 #   declared_license: None
 #   detected_licenses: []
 
-# After (v1.5.9):
+# After (v1.6.0):
 #   declared_license: "Apache-2.0"  # From parent POM
 #   detected_licenses: ["Apache-2.0"]
 #   metadata.license_source: "parent_pom_via_clearlydefined"
