@@ -2,7 +2,7 @@
 # Python 3.10+ required
 
 # MCP server with SEMCL.ONE compliance tools
-mcp-semclone>=1.5.6
+mcp-semclone>=1.5.7
 
 # MCP SDK for connecting to MCP servers
 mcp>=1.0.0

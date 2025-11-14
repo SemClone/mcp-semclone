@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.7] - 2025-01-13
+
+### Added
+
+#### New Tool: download_and_scan_package - Comprehensive Package Source Analysis
+
+**FEATURE: Download package source from registries and perform deep scanning**
+
+**Problem:**
+- Users didn't know we CAN download source code from PURLs
+- LLMs said "I don't have a tool to download source code" when we do!
+- Existing tools (check_package, generate_legal_notices_from_purls) can download but it wasn't explicit
+- No single tool that orchestrates: download → extract metadata → scan licenses → find copyrights
+
+**Solution:**
+New `download_and_scan_package(purl)` tool that makes it CRYSTAL CLEAR we can download and analyze packages:
+
+**What it does:**
+1. Downloads actual package source from npm/PyPI/Maven/etc registries
+2. Extracts package to temporary directory
+3. Uses upmex to extract metadata (license, homepage, description)
+4. Uses osslili to perform deep license scanning of ALL source files
+5. Scans for copyright statements in source code
+6. Returns download location for manual inspection (optional)
+
+**When to use:**
+- Package metadata is incomplete (e.g., PyPI shows "UNKNOWN" license)
+- Need to verify what's ACTUALLY in package files (not just package.json)
+- Security auditing - inspect actual package contents before approval
+- Find licenses embedded in source files that aren't in metadata
+- Extract copyright statements from source code
+
+**Real-world example from user conversation:**
+```
+User: "Can you check if duckdb@0.2.3 has license info in the source code?"
+Before: "I don't have a tool to download source code"
+After: download_and_scan_package("pkg:pypi/duckdb@0.2.3")
+Result: {"declared_license": "UNKNOWN", "detected_licenses": ["CC0-1.0"], ...}
+```
+
+**Performance:**
+- Download: 1-5 seconds
+- Scanning: 2-10 seconds
+- Total: ~5-15 seconds for typical packages
+
+**API:**
+```python
+# Basic usage - download and scan
+download_and_scan_package(purl="pkg:pypi/duckdb@0.2.3")
+
+# Keep downloaded files for manual inspection
+result = download_and_scan_package(
+    purl="pkg:npm/suspicious-package@1.0.0",
+    keep_download=True
+)
+print(f"Inspect at: {result['download_path']}")
+
+# Quick metadata only (no deep scan)
+download_and_scan_package(
+    purl="pkg:pypi/requests@2.28.0",
+    scan_licenses=False
+)
+```
+
+**Returns:**
+- purl: Package URL analyzed
+- download_path: Where files are (if keep_download=True)
+- metadata: Package metadata from upmex
+- declared_license: License from package metadata
+- detected_licenses: Licenses found by scanning source files
+- copyright_statements: Copyright statements extracted
+- files_scanned: Number of files analyzed
+- scan_summary: Human-readable summary
+
+**Why this matters:**
+- Makes capabilities EXPLICIT - LLMs know we can download source
+- Single orchestrating tool - no need to chain multiple tools
+- Comprehensive analysis - metadata + deep scanning + copyrights
+- Real source verification - see what's actually in the package
+
 ## [1.5.6] - 2025-01-13
 
 ### Changed
