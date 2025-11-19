@@ -37,355 +37,181 @@ mcp = FastMCP(
     name="mcp-semclone",
     instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
 
-⚠️ IMPORTANT - ALL TOOLS ARE BUILT-IN:
-This MCP server provides ALL necessary compliance and license scanning tools.
-DO NOT install external tools or packages for compliance tasks.
+*** USE THIS SERVER WHEN USER ASKS ABOUT: ***
+-------------------------------------------------------------------------------------------------------
+- "compliance", "license compliance", "legal compliance", "do compliance"
+- "open source licenses", "OSS licenses", "license scanning", "check licenses"
+- "SBOM", "software bill of materials", "supply chain security", "dependency scanning"
+- "can I ship this?", "can I use GPL?", "license compatibility", "license conflicts"
+- "NOTICE file", "legal notices", "attribution", "license text", "third-party licenses"
+- "scan for licenses", "analyze licenses", "validate licenses", "check dependencies"
+- "mobile app compliance", "app store licenses", "SaaS compliance", "commercial licenses"
 
-❌ NEVER DO THIS:
-- npm install -g license-checker, licensee, or any npm license tools
-- pip install scancode-toolkit, licensecheck, or any Python license tools
-- Installing ngx, fossil, or other third-party scanning tools
-- Running package managers (npm, pip, gem, cargo) to add compliance functionality
-- Trying to install or use external CLI tools for license/SBOM generation
+*** QUICK START - TOOL SELECTION DECISION TREE: ***
+-------------------------------------------------------------------------------------------------------
 
-✓ ALWAYS DO THIS:
-- Use scan_directory() for analyzing projects → detects all packages + licenses automatically
-- Use generate_legal_notices() for creating NOTICE/LICENSE files
-- Use validate_policy() for license approval/rejection decisions
-- Use generate_sbom() for Software Bill of Materials generation
-- Use scan_binary() for compiled binaries and mobile apps
-- All necessary tools (purl2notices, ossnotices, osslili, ospac, vulnq, etc.) are pre-installed
+IF user says "do compliance" or "compliance check":
+   --> run_compliance_check(path, distribution_type)  [ONE-SHOT COMPLETE]
 
-If you think you need an external tool, STOP and check the MCP tool list first.
-The functionality you need is already available through the MCP tools below.
+IF input is source code directory/project:
+   --> scan_directory(path)  [FIRST STEP for most workflows]
 
-CRITICAL WORKFLOW RULES:
+IF input is package archive (.jar, .whl, .rpm, .gem, .nupkg):
+   --> check_package(path)  [RECOMMENDED for package files]
 
-1. **TWO TOOLS FOR LEGAL NOTICES - Choose the right one:**
+IF input is compiled binary (.apk, .exe, .ipa, .so, .dll, firmware):
+   --> scan_binary(path)  [BEST for binaries and mobile apps]
 
-   a) **generate_legal_notices(path=...)** - DEFAULT, use this for most cases (FAST)
-      - Scans source code directly (node_modules/, site-packages/, vendor/)
-      - Detects ALL transitive dependencies automatically
-      - 10x faster than downloading from registries
-      - Example: generate_legal_notices(path="/path/to/project", output_file="NOTICE.txt")
+IF user asks "can I use [license]?" or "is [license] allowed?":
+   --> validate_policy([licenses], distribution)  [PRIMARY for approve/deny]
 
-   b) **generate_legal_notices_from_purls(purls=[...])** - SPECIAL CASES only (SLOW)
-      - Downloads packages from npm/PyPI/etc registries
-      - Use ONLY when: dependencies not installed locally, or you have a PURL list from another source
-      - Example: generate_legal_notices_from_purls(purls=purl_list, output_file="NOTICE.txt")
+IF user wants NOTICE file or attribution:
+   --> generate_legal_notices(path)  [DEFAULT - fast, scans source]
+   --> generate_legal_notices_from_purls(purls)  [only if no local deps]
 
-2. **When to use each tool:**
-   - Have source code with dependencies installed? → Use generate_legal_notices(path=...)
-   - No local dependencies (no node_modules/)? → Use generate_legal_notices_from_purls(purls=[...])
-   - Need vulnerability scan too? → scan_directory() first, then generate_legal_notices_from_purls(purls)
+IF user wants SBOM or bill of materials:
+   --> generate_sbom(path)
 
-3. **NEVER manually extract PURLs** from package.json or requirements.txt
-   - WRONG: Reading package.json, extracting "http-server@14.1.1" → 1 PURL
-   - RIGHT: Use generate_legal_notices(path=".") OR scan_directory() for ALL transitive deps
-   - For npm projects: Needs ~50+ packages from node_modules/, NOT just 1-2 from package.json
+IF checking single license details:
+   --> get_license_details(license_id) or get_license_obligations(license_id)
 
-4. **Shortcut for complete workflow**: Use run_compliance_check() - it does everything in one call
-   - Internally calls scan_directory → generate_legal_notices → validate_policy → generate_sbom
-   - Returns approval decision and creates all artifacts
+*** CRITICAL - ALL TOOLS ARE BUILT-IN: ***
+-------------------------------------------------------------------------------------------------------
+This server provides ALL compliance tools. DO NOT install external tools.
 
-INTERPRETING LICENSE DATA FROM OSPAC:
-When analyzing license obligations and requirements, use these OSPAC fields to derive implications:
+NEVER DO THIS:
+- npm install license-checker / pip install scancode-toolkit
+- Install ANY third-party scanning tools
+- Manually extract PURLs from package.json/requirements.txt
 
-1. NETWORK COPYLEFT (Critical for SaaS/Cloud):
-   - Field: requirements.network_use_disclosure
-   - If TRUE: License requires source disclosure even for SaaS/network use (AGPL-3.0)
-   - If FALSE: License only requires disclosure on distribution (GPL-3.0)
-   - Calculate: saas_safe = NOT network_use_disclosure
-   - Example: AGPL has network_use_disclosure=true → NOT safe for SaaS without disclosure
+ALWAYS DO THIS:
+- Use run_compliance_check() for complete workflows
+- Use scan_directory() for projects (auto-detects ALL deps)
+- Use validate_policy() for approve/deny decisions
+- All tools pre-installed: purl2notices, ospac, osslili, vulnq, binarysniffer
 
-2. COPYLEFT STRENGTH:
-   - Field: compatibility.contamination_effect
-   - Values: "none" (permissive), "weak" (LGPL/MPL), "strong" (GPL/AGPL)
-   - Strong copyleft + network_use_disclosure=true = AGPL (most restrictive)
-   - Strong copyleft + network_use_disclosure=false = GPL (distribution only)
-   - Use this to determine viral effects on derivative works
+*** KEY WORKFLOW RULES: ***
 
-3. DISCLOSURE TRIGGERS:
-   - Calculate from requirements.disclose_source + network_use_disclosure:
-     * Both TRUE → "distribution_or_network" (AGPL)
-     * Only disclose_source TRUE → "distribution" (GPL)
-     * Both FALSE → "none" (permissive licenses)
+1. LEGAL NOTICES - Two tools, choose wisely:
+   - generate_legal_notices(path) - DEFAULT (fast, scans source directly)
+   - generate_legal_notices_from_purls(purls) - Only if no local deps
 
-4. MOBILE APP COMPATIBILITY:
-   - GPL licenses (GPL-2.0, GPL-3.0) are incompatible with App Stores due to DRM restrictions
-   - Check: If "GPL" in license_id AND "LGPL" NOT in license_id → app_store_compatible = false
-   - LGPL, MIT, Apache, BSD are all compatible with mobile app stores
-   - Combine with policy validation for definitive answer
+2. NEVER manually extract PURLs from package.json/requirements.txt
+   - WRONG: Read package.json → extract 1-2 packages
+   - RIGHT: scan_directory() → auto-detects ALL transitive deps (50+ packages)
 
-5. COMMON PITFALLS (Derive from requirements):
-   - requirements.include_license=true → Pitfall: "Forgetting LICENSE file in distribution"
-   - requirements.include_copyright=true → Pitfall: "Removing copyright notices"
-   - requirements.disclose_source=true → Pitfall: "Not providing source code"
-   - requirements.state_changes=true → Pitfall: "Not documenting modifications"
+3. Complete workflow shortcut: run_compliance_check() does everything in one call
 
-6. COMPLIANCE CHECKLISTS (Generate from obligations + requirements):
-   - Use obligations[] for narrative requirements
-   - Use requirements.* for specific checklist items
-   - Format as actionable steps for users
+*** LICENSE INTERPRETATION (Key OSPAC fields): ***
 
-7. LICENSE TYPE IMPLICATIONS:
-   - type="permissive" → Ideal for: mobile, saas, commercial, all uses
-   - type="copyleft_weak" → Review: linking requirements, LGPL static linking needs care
-   - type="copyleft_strong" + network_use_disclosure=false → Avoid: mobile apps; OK: SaaS if no distribution
-   - type="copyleft_strong" + network_use_disclosure=true → Avoid: SaaS, mobile; Requires: source publication
+- requirements.network_use_disclosure=true → AGPL (NOT safe for SaaS)
+- compatibility.contamination_effect = "none"/"weak"/"strong" → Copyleft strength
+- GPL (not LGPL) → Incompatible with App Stores
+- type="permissive" (MIT/Apache/BSD) → Safe for all uses
+- type="copyleft_strong" → Avoid for mobile/commercial
 
-BINARY SCANNING GUIDANCE (scan_binary tool):
+(See tool docstrings for detailed license interpretation guidance)
 
-When to use scan_binary vs scan_directory:
-- Use scan_binary for: APK, IPA, EXE, DLL, SO, DYLIB, JAR, WAR, EAR, firmware images, compiled binaries
-- Use scan_directory for: Source code repositories, projects with build files, uncompiled code
-- Use BOTH when: You have both source and compiled artifacts (scan separately, compare results)
+*** BINARY SCANNING: ***
 
-File type recognition (when to use scan_binary):
-- Mobile apps: .apk (Android), .ipa (iOS), .aab (Android App Bundle)
-- Desktop executables: .exe (Windows), ELF binaries (Linux, no extension), .app bundles (macOS)
-- Libraries: .dll (Windows), .so (Linux), .dylib (macOS), .a (static libs)
-- Java/JVM: .jar, .war, .ear, .class files
-- Firmware: .bin, .img, .hex, embedded system images
-- Archives containing binaries: .zip, .tar.gz with binaries inside
-- When user mentions: "compiled", "binary", "executable", "firmware", "APK", "mobile app binary"
+When to use scan_binary:
+- Mobile apps: .apk, .ipa, .aab
+- Executables: .exe, ELF binaries, .app
+- Libraries: .dll, .so, .dylib
+- Firmware: .bin, .img, .hex
 
-Analysis mode selection:
-- analysis_mode="fast": Use for initial scans, large files (>100MB), time-sensitive queries
-  * Skips fuzzy matching, faster but may miss some components
-  * Good for: Quick checks, CI/CD pipelines, preliminary assessments
-- analysis_mode="standard" (default): Use for most cases, balanced speed/accuracy
-  * Comprehensive signature matching, reasonable performance
-  * Good for: General compliance checks, regular assessments
-- analysis_mode="deep": Use for critical assessments, detailed analysis, legal compliance
-  * Thorough analysis, slower but most accurate
-  * Good for: Pre-release compliance, legal reviews, embedded systems
+Analysis modes:
+- "fast" → Quick scans, large files
+- "standard" (default) → Balanced speed/accuracy
+- "deep" → Critical assessments, pre-release
 
-Confidence threshold guidance:
-- confidence_threshold=0.3-0.5: Use for discovery mode (find all possible components)
-- confidence_threshold=0.5-0.7 (default 0.5): Balanced, good for most use cases
-- confidence_threshold=0.7-0.9: High confidence only, reduce false positives
-- Lower threshold for firmware/embedded (components may be modified)
-- Higher threshold for well-known libraries (expect exact matches)
+Key options:
+- check_compatibility=True → For mobile apps (detect GPL/App Store conflicts)
+- confidence_threshold: 0.3-0.5 (discovery), 0.5-0.7 (default), 0.7-0.9 (high confidence)
 
-When to enable specific options:
-- check_licenses=True (default): Always use unless only interested in components
-- check_compatibility=True: Use for commercial products, mobile apps, mixed licensing scenarios
-- generate_sbom=True: Use for compliance documentation, supply chain requirements, distribution
+Red flags:
+- GPL in mobile apps → App Store rejection
+- AGPL in SaaS → Must disclose source
 
-Interpreting binary scan results:
-1. Check result["summary"]["total_components"] - number of OSS components detected
-2. Review result["licenses"] - all licenses found in the binary
-3. If check_compatibility=True: Review result["compatibility_warnings"] for conflicts
-4. Examine result["components"] for details on each detected component
-5. Compare with source code scan if available (should match or be subset)
+(See scan_binary docstring for detailed workflows)
 
-Common binary scanning workflows:
+*** LICENSE APPROVAL/REJECTION: ***
 
-1. Mobile app pre-release check:
-   scan_binary(
-       path="app.apk",
-       analysis_mode="deep",
-       check_compatibility=True  # Detect GPL/App Store conflicts
-   )
-   → Review licenses for App Store compatibility
-   → Use validate_license_list() with distribution="mobile" for verification
-   → Generate legal notices with licenses found
+validate_policy() is the PRIMARY tool for approve/deny decisions.
 
-2. Firmware compliance assessment:
-   scan_binary(
-       path="firmware.bin",
-       analysis_mode="deep",
-       confidence_threshold=0.4,  # Firmware components may be modified
-       generate_sbom=True
-   )
-   → Extract all component licenses
-   → Check for copyleft licenses (GPL in firmware = must provide source)
-   → Generate NOTICE file for distribution
+Result actions:
+- "approve" → Licenses ALLOWED
+- "deny" → Licenses BLOCKED, find alternatives
+- "review" → Requires manual legal review
 
-3. Desktop application check:
-   scan_binary(
-       path="application.exe",
-       analysis_mode="standard",
-       check_licenses=True,
-       check_compatibility=True
-   )
-   → Identify all bundled libraries
-   → Check for license conflicts
-   → Validate against commercial distribution policy
+Distribution types:
+- "mobile" → Blocks GPL (App Store conflicts)
+- "commercial" → Blocks strong copyleft (GPL/AGPL)
+- "saas" → Blocks AGPL (network copyleft)
+- "embedded" → Blocks copyleft (source disclosure)
+- "open_source" → Allows most licenses
+- "internal" → Allows all licenses
 
-4. Java/JVM application:
-   scan_binary(
-       path="application.jar",
-       analysis_mode="standard",
-       generate_sbom=True
-   )
-   → Detect bundled dependencies (even if not in manifest)
-   → Generate SBOM for supply chain
-   → Check for known vulnerabilities in detected components
+Example: validate_policy(["GPL-3.0"], distribution="mobile") → action: "deny"
 
-5. Third-party library verification:
-   scan_binary(
-       path="vendor_library.so",
-       analysis_mode="deep",
-       confidence_threshold=0.7  # High confidence for verification
-   )
-   → Verify vendor license claims
-   → Detect undisclosed OSS components
-   → Check for license compliance issues
+*** TOOL DESCRIPTIONS (Quick Reference): ***
 
-Red flags in binary scan results:
-- GPL licenses in mobile apps → App Store rejection risk
-- AGPL licenses in SaaS binaries → Must disclose source for network use
-- Multiple incompatible copyleft licenses → Legal conflict
-- Undisclosed components (not in vendor docs) → Compliance risk
-- High component count with low confidence → Needs deeper analysis
+Scanning Tools:
+- scan_directory() → Source code projects (auto-detects ALL transitive deps)
+- check_package() → Package archives (.jar, .whl, .rpm, .gem)
+- scan_binary() → Compiled binaries (.apk, .exe, .ipa, .so, .dll, firmware)
 
-LICENSE APPROVAL/REJECTION WORKFLOW:
+Policy/License Tools:
+- validate_policy() → PRIMARY for approve/deny decisions
+- validate_license_list() → Quick safety check
+- get_license_details() → Full license info + text
+- get_license_obligations() → Compliance requirements
+- check_license_compatibility() → Can two licenses mix?
 
-The validate_policy tool is your PRIMARY tool for determining if licenses are approved or rejected for specific project types. Use this for:
+Documentation Tools:
+- generate_legal_notices() → NOTICE files (scans source)
+- generate_legal_notices_from_purls() → NOTICE files (from PURL list)
+- generate_sbom() → Software Bill of Materials
 
-**Common Questions:**
-- "Can I use GPL-3.0 in my mobile app?" → validate_policy(["GPL-3.0"], distribution="mobile") → action: "deny"
-- "Are these licenses OK for commercial use?" → validate_policy(licenses, distribution="commercial") → check action field
-- "Is AGPL allowed in SaaS?" → validate_policy(["AGPL-3.0"], distribution="saas") → action: "deny"
-- "What licenses can I use for embedded?" → Try with your licenses, check action in result
+Workflows:
+- run_compliance_check() → ONE-SHOT complete workflow (scan + validate + docs)
+- analyze_commercial_risk() → Risk assessment for commercial use
 
-**Key Decisions:**
-- action: "approve" → Licenses are ALLOWED, you can proceed ✓
-- action: "deny" → Licenses are BLOCKED, must find alternatives ✗
-- action: "review" → Requires manual legal review ⚠
-- Check result.remediation for specific guidance on fixing "deny" issues
+*** COMMON WORKFLOWS: ***
 
-**Distribution Types:**
-- "mobile": Mobile apps (iOS/Android) - Blocks GPL (App Store conflicts), allows MIT/Apache
-- "commercial": Commercial products - Blocks strong copyleft (GPL/AGPL), allows weak copyleft (LGPL) and permissive
-- "saas": SaaS/Cloud services - Blocks AGPL (network copyleft), allows GPL (no distribution)
-- "embedded": Embedded systems - Blocks copyleft (source disclosure burden)
-- "desktop": Desktop applications - Similar to commercial
-- "web": Web applications - Similar to saas
-- "open_source": Open source projects - Allows most licenses
-- "internal": Internal use only - Allows all licenses
+Complete workflow (ONE-SHOT):
+  run_compliance_check(path, distribution_type) → Returns approve/deny + artifacts
 
-**Integration with Scanning:**
-1. Scan project: scan_directory(path) or scan_binary(path)
-2. Extract licenses: licenses = [lic["spdx_id"] for lic in result["licenses"]]
-3. Validate: policy_result = validate_policy(licenses, distribution="mobile")
-4. Check decision: if policy_result["result"]["action"] == "deny": → Alert user/block deployment
-5. Show remediation: policy_result["result"]["remediation"] → "Replace with MIT alternative"
+Manual step-by-step:
+  1. scan_directory(path) or scan_binary(path)
+  2. validate_policy(licenses, distribution)
+  3. If approved: generate_legal_notices(path) + generate_sbom(path)
+  4. If denied: Show remediation, block deployment
 
-**Quick Policy Checks (without scanning filesystem):**
-validate_policy(["MIT", "Apache-2.0", "GPL-3.0"], distribution="mobile")
-→ Returns: action="deny" because GPL-3.0 conflicts with App Store terms
-→ Remediation: "Replace with MIT, Apache-2.0, or BSD licensed alternative"
+Quick checks:
+  - License approval: validate_policy(["MIT", "GPL"], distribution="mobile")
+  - Mobile app: scan_binary("app.apk") → validate_policy(licenses, "mobile")
+  - Firmware: scan_binary("firmware.bin") → Check for copyleft
 
-TOOL SELECTION GUIDE:
+*** RESOURCES & CONSTRAINTS: ***
 
-**For Package Archives (.jar, .whl, .rpm, .gem, .nupkg, .crate, etc.):**
-- check_package: RECOMMENDED for package archives. Intelligently uses upmex for metadata extraction + osslili for licenses. Fastest and most accurate for packages with structured metadata.
+Resources:
+- semcl://license_database → License compatibility data
+- semcl://policy_templates → Pre-configured policies (commercial, open_source, internal)
 
-**For Compiled Binaries (.so, .dll, .dylib, .exe, .bin, .apk, .ipa):**
-- scan_binary: Use for truly compiled binaries, firmware, and mobile apps. Uses BinarySniffer for signature-based component detection. Best for executables and native libraries.
+Constraints:
+- Vuln scanning: Limited to first 10 packages
+- Timeout: 120 seconds per tool
+- Large codebases: Scan specific subdirectories
 
-**For Source Code Directories:**
-- scan_directory: Primary tool for analyzing projects/codebases. Uses purl2notices scan mode to detect all packages (including transitive deps), extract licenses, and identify copyright holders.
-
-**Detailed Tool Descriptions:**
-- check_package: Intelligent package analyzer that automatically selects the best extraction method:
-  * For archives: Tries upmex first (fast, accurate metadata), falls back to osslili
-  * For PURLs: Direct package registry lookups
-  * Returns: Package metadata (name, version, PURL), licenses, optional vulnerabilities
-  * Use when: You have a package file (.jar, .whl, etc.) or PURL to analyze
-
-- scan_binary: Binary signature detection for compiled files using BinarySniffer:
-  * Detects OSS components embedded in binaries through signature matching
-  * Use for: Mobile apps (APK/IPA), executables (EXE), native libraries (SO/DLL/DYLIB), firmware
-  * Returns: Detected components, licenses, compatibility warnings, optional SBOM
-  * Note: Slower than check_package for archives; prefer check_package for .jar, .whl, etc.
-
-- scan_directory: Comprehensive source code analysis:
-  * Scanning via purl2notices (licenses, packages, copyrights - all in one!)
-  * Detects ALL packages including transitive dependencies (entire node_modules/, not just package.json)
-  * Optional vulnerability scanning (all detected packages)
-  * Use for: Git repositories, source directories, projects with build files
-  * NO manual PURL extraction needed - automatically scans dependencies
-
-- validate_policy: **PRIMARY tool for license approve/reject decisions**
-  * Evaluates licenses against organizational policies for specific distribution types
-  * Returns clear "approve", "deny", or "review" actions with remediation guidance
-  * Answers: "Can I use these licenses for my [mobile/commercial/saas] project?"
-  * Use this FIRST to check if licenses are allowed before proceeding
-  * No filesystem access needed - validates license lists directly
-- validate_license_list: Quick distribution safety check (e.g., "Can I ship to App Store?")
-- get_license_obligations: Detailed compliance requirements for specific licenses
-- check_license_compatibility: Check if two licenses can be combined
-- get_license_details: Comprehensive license information including full text
-- analyze_commercial_risk: Commercial distribution risk assessment for copyleft detection
-- run_compliance_check: Universal compliance workflow - one-shot complete check for ANY project type
-- generate_sbom: Generates Software Bill of Materials (calls scan_directory internally)
-
-PERFORMANCE CONSTRAINTS:
-1. Vulnerability scanning limited to first 10 packages to avoid timeouts
-2. Tool execution timeout: 120 seconds per tool invocation
-3. Recursive scanning depth limits: max-depth 10 for license scans, max-depth 5 for package identification
-4. Large codebases: Consider scanning specific subdirectories rather than entire repository
-
-INPUT FORMAT REQUIREMENTS:
-- Package identifiers: Accepts PURLs (pkg:npm/package@1.0), CPEs (cpe:2.3:a:vendor:product), or file paths
-- Paths: Absolute or relative paths to files or directories
-- License lists: Array of SPDX license identifiers (e.g., ["Apache-2.0", "MIT"])
-- Policy files: JSON or YAML format policy definitions for ospac tool
-
-COMMON WORKFLOWS:
-
-License Approval/Rejection Workflows (USE THESE FIRST):
-1. Quick license check: validate_policy(["MIT", "GPL-3.0"], distribution="mobile") → Check action field for approve/deny
-2. After scanning: scan_directory(path) → extract licenses → validate_policy(licenses, distribution="commercial") → Check approval status
-3. Pre-deployment gate: validate_policy(project_licenses, distribution="saas") → if action=="deny": Block deployment, show remediation
-4. Dependency evaluation: For each dependency license → validate_policy([license], distribution=target) → Filter approved only
-
-Source Code Workflows:
-5. Basic compliance check: scan_directory(path, check_licenses=True, identify_packages=False)
-6. Full security assessment: scan_directory(path, check_vulnerabilities=True) - automatically enables package identification
-7. Policy validation with custom rules: scan_directory(path, policy_file="policy.json") → validate_policy(licenses, policy_file, distribution)
-8. Commercial risk analysis: analyze_commercial_risk(path) for mobile/commercial distribution decisions
-9. SBOM generation: generate_sbom(path, format="spdx") for supply chain transparency
-
-Binary Workflows:
-10. Mobile app compliance: scan_binary("app.apk", analysis_mode="deep") → validate_policy(licenses, distribution="mobile") → Check approve/deny
-11. Firmware assessment: scan_binary("firmware.bin", analysis_mode="deep") → validate_policy(licenses, distribution="embedded") → Block if copyleft detected
-12. Desktop app check: scan_binary("app.exe") → validate_policy(licenses, distribution="desktop") → get_license_obligations(licenses)
-13. Library verification: scan_binary("library.so", confidence_threshold=0.7) → compare with vendor claims
-14. Combined analysis: scan_directory("src/") + scan_binary("build/app.apk") → validate_policy(all_licenses, distribution) → Gate deployment
-
-UNIVERSAL COMPLIANCE WORKFLOW (Works for ALL project types - mobile, desktop, saas, embedded, etc.):
-
-Option 1 - ONE-SHOT COMPLETE CHECK (Recommended):
-run_compliance_check(path="/path/to/project", distribution_type="mobile")
-→ Automatically: scans → generates NOTICE.txt → validates policy → creates sbom.json → checks vulns
-→ Returns: APPROVED/REJECTED decision + risk level + complete artifacts
-
-Option 2 - MANUAL STEP-BY-STEP (For custom workflows):
-Step 1: scan_directory(path, check_vulnerabilities=True, identify_packages=True)
-Step 2: Extract licenses from result["licenses"], purls from result["packages"]
-Step 3: validate_license_list(licenses, distribution="mobile") OR validate_policy(licenses, policy_file)
-Step 4: If violations: Show remediation guidance, block deployment
-Step 5: generate_legal_notices(purls, output_file="NOTICE.txt") [PRIMARY TOOL - always use for docs]
-Step 6: generate_sbom(path, output_file="sbom.json")
-Step 7: Compile final report
-
-IMPORTANT: NO project-type-specific tools exist. Use run_compliance_check for ANY type.
-Distribution type is just a parameter for policy context, not a separate workflow.
-
-RESOURCE ACCESS:
-- semcl://license_database: Retrieves comprehensive license compatibility database from ospac
-- semcl://policy_templates: Returns pre-configured policy templates (commercial, open_source, internal)
-
-ERROR HANDLING:
+Error handling:
 - Tools return {"error": "message"} on failures
-- Non-zero exit codes are logged but don't always indicate failure (check returned data)
-- Missing CLI tools (purl2notices, vulnq, ospac, binarysniffer) will raise FileNotFoundError
-- scan_directory uses purl2notices for comprehensive scanning (no longer uses osslili or src2purl)"""
+- Check returned data even if non-zero exit code
+
+Input formats:
+- PURLs: pkg:npm/package@1.0
+- Paths: Absolute or relative
+- Licenses: ["Apache-2.0", "MIT"]"""
 )
 
 # Tool auto-detection cache to avoid repeated lookups
