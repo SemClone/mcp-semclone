@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2025-01-18
+
+### Changed
+
+#### Improved LLM/IDE Integration with Clearer Tool Selection Guidance
+
+**Problem:**
+When users asked LLM-powered IDEs (Cursor, Windsurf, etc.) to "do compliance for this project", the LLM would often:
+- Not recognize that mcp-semclone handles compliance tasks
+- Attempt to install external tools (npm install license-checker, pip install scancode-toolkit)
+- Struggle to select the correct tool from the 14 available options
+
+**Root Causes:**
+- No explicit trigger keywords linking compliance terminology to mcp-semclone
+- 384-line instruction block potentially exceeded LLM processing windows
+- Tool selection required reading through multiple detailed docstrings
+- No clear decision tree for common use cases
+
+**Solution:**
+Enhanced MCP server instructions to improve recognition and tool selection:
+
+1. **Added Trigger Keywords** - Explicit keywords that help LLMs recognize when to use this server:
+   - "compliance", "license compliance", "do compliance"
+   - "SBOM", "software bill of materials", "supply chain security"
+   - "can I ship this?", "license compatibility"
+   - "mobile app compliance", "SaaS compliance"
+
+2. **Added Decision Tree** - Clear IF-THEN logic for tool selection:
+   - IF user says "do compliance" → run_compliance_check()
+   - IF source code directory → scan_directory()
+   - IF package archive → check_package()
+   - IF binary → scan_binary()
+   - IF "can I use [license]?" → validate_policy()
+
+3. **Condensed Instructions** - Reduced instruction block by ~55% (384 → 175 lines):
+   - Kept: Anti-patterns, key workflows, tool descriptions, constraints
+   - Condensed: License interpretation, binary scanning, common workflows
+   - Removed: Verbose examples, redundant explanations
+   - Added references to detailed docstrings for deep dives
+
+**Changes:**
+- mcp_semclone/server.py:
+  * Added trigger keywords section (lines 40-48)
+  * Added decision tree for tool selection (lines 50-76)
+  * Condensed instruction block from ~384 to ~175 lines
+  * Improved clarity on when to use each tool
+  * Maintained all critical information
+
+**Impact:**
+- Faster tool recognition for compliance queries in LLM-powered IDEs
+- Reduced hallucination and incorrect tool selection
+- Better first-time user experience
+- Clearer guidance on tool selection without reading full documentation
+
 ## [1.6.1] - 2025-01-13
 
 ### Fixed
