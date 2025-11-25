@@ -136,7 +136,7 @@ pipx list --include-injected | grep mcp-semclone -A 3
 - Configuration templates
 - Troubleshooting
 
-**See the [IDE Integration Guide](guides/IDE_INTEGRATION_GUIDE.md)**
+**See the [IDE Integration Guide](https://community.semcl.one/user_guides/mcp-semclone-ide-integration-guide/)**
 
 ### Environment Variables
 
@@ -173,47 +173,6 @@ Once configured, you can ask your LLM:
 - "Validate these licenses against our commercial distribution policy"
 - "Find all GPL-licensed dependencies in this codebase"
 
-### Direct MCP Client Usage
-
-```python
-from mcp import Client
-import asyncio
-
-async def main():
-    async with Client("mcp-semclone") as client:
-        # Scan a directory
-        result = await client.call_tool(
-            "scan_directory",
-            {
-                "path": "/path/to/project",
-                "check_vulnerabilities": True,
-                "check_licenses": True
-            }
-        )
-        print(f"Found {result['metadata']['total_packages']} packages")
-        print(f"Found {result['metadata']['total_vulnerabilities']} vulnerabilities")
-
-        # Scan a binary file
-        binary_result = await client.call_tool(
-            "scan_binary",
-            {
-                "path": "/path/to/app.apk",
-                "analysis_mode": "deep",
-                "check_compatibility": True
-            }
-        )
-        print(f"Found {binary_result['metadata']['component_count']} components")
-        print(f"Licenses: {binary_result['licenses']}")
-
-        # Check a specific package
-        package_result = await client.call_tool(
-            "check_package",
-            {"identifier": "pkg:npm/express@4.17.1"}
-        )
-        print(f"Vulnerabilities: {package_result['vulnerabilities']}")
-
-asyncio.run(main())
-```
 
 ## Workflows
 
@@ -240,71 +199,6 @@ asyncio.run(main())
 4. **Format as SBOM** (CycloneDX 1.4 JSON)
 5. **Validate completeness** of the SBOM
 
-## Architecture
-
-```
-┌─────────────────┐
-│   LLM Client    │
-│  (MCP Client)   │
-└────────┬────────┘
-         │ MCP Protocol
-┌────────▼────────┐
-│  mcp-semclone   │
-│   MCP Server    │
-└────────┬────────┘
-         │ Subprocess calls
-┌────────▼──────────────────────────┐
-│      SEMCL.ONE Toolchain          │
-├────────────────────────────────────┤
-│ purl2notices │ Package + License  │
-│ osslili      │ Archive scanning   │
-│ binarysniffer│ Binary analysis    │
-│ vulnq        │ Vulnerability DB   │
-│ ospac        │ Policy engine      │
-│ upmex        │ Metadata extract   │
-└────────────────────────────────────┘
-```
-
-## Server Instructions for LLMs
-
-The MCP server includes comprehensive instructions that help LLMs understand how to use the tools effectively. These instructions are automatically injected into the LLM's context when using the server, providing:
-
-### Workflow Patterns
-- **License-first approach**: The server prioritizes license detection before package identification or vulnerability scanning
-- **Efficient execution order**: Tools are orchestrated in an optimal sequence (licenses → packages → vulnerabilities → policy validation)
-- **Smart dependency handling**: Package identification is only performed when needed for vulnerability checks or detailed SBOMs
-
-### Tool Selection Guidance
-- When to use `scan_directory` (comprehensive analysis) vs `check_package` (single package lookup)
-- How tools interact (e.g., `generate_sbom` automatically calls `scan_directory` internally)
-- Specialized tools for specific scenarios (e.g., `analyze_commercial_risk` for mobile/commercial distribution)
-
-### Performance Optimization
-- Vulnerability scanning is limited to the first 10 packages to avoid timeouts
-- Recursive scanning depth limits: 10 for licenses, 5 for package identification
-- 120-second timeout per tool invocation
-- Guidance for handling large codebases
-
-### Common Usage Patterns
-The server provides ready-to-use workflow examples:
-1. **Basic compliance check**: License inventory without package identification
-2. **Full security assessment**: Complete vulnerability analysis with package discovery
-3. **Policy validation**: Automated license compliance checking
-4. **Commercial risk analysis**: Copyleft detection for mobile/commercial use
-5. **SBOM generation**: Supply chain transparency documentation
-
-This enables LLMs to automatically choose the right tool combination, optimize performance, and follow best practices without requiring user expertise in OSS compliance workflows.
-
-## Tool Integration
-
-The MCP server orchestrates multiple SEMCL.ONE tools:
-
-1. **purl2notices**: Comprehensive package detection, license scanning, and copyright extraction (primary scanning tool)
-2. **osslili**: License detection in archives and compressed files (used by check_package)
-3. **binarysniffer**: Binary analysis for compiled artifacts (APK, EXE, DLL, SO, JAR)
-4. **vulnq**: Queries vulnerability databases (OSV, GitHub, NVD)
-5. **ospac**: Validates licenses against policies
-6. **upmex**: Extracts package metadata from manifests (used by check_package)
 
 ## Examples
 
