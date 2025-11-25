@@ -92,13 +92,6 @@ pipx inject mcp-semclone purl2notices purl2src osslili binarysniffer ospac vulnq
 - ✅ Easy to update: `pipx upgrade mcp-semclone`
 - ✅ Clean uninstall: `pipx uninstall mcp-semclone`
 
-### Development Installation
-
-```bash
-git clone https://github.com/SemClone/mcp-semclone.git
-cd mcp-semclone
-pip install -e .[dev]
-```
 
 ## Configuration
 
