@@ -93,36 +93,7 @@ pipx inject mcp-semclone purl2notices purl2src osslili binarysniffer ospac vulnq
 - ✅ Clean uninstall: `pipx uninstall mcp-semclone`
 
 
-## Configuration
-
-### MCP Client Integration
-
-**Quick Start - Basic Configuration:**
-
-Add to your MCP client configuration file (e.g., `.cursor/mcp.json`, Cline settings, `.kiro/settings/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "semclone": {
-      "command": "/path/to/your/.local/pipx/venvs/mcp-semclone/bin/python3",
-      "args": ["-m", "mcp_semclone.server"],
-      "env": {}
-    }
-  }
-}
-```
-
-**Find your pipx Python path:**
-```bash
-# macOS/Linux
-echo "$HOME/.local/pipx/venvs/mcp-semclone/bin/python3"
-
-# Or locate automatically
-pipx list --include-injected | grep mcp-semclone -A 3
-```
-
-**📖 For detailed setup instructions including:**
+** For detailed setup instructions including:**
 - IDE-specific configurations (Cursor, Cline, Kiro, VS Code, JetBrains)
 - Auto-approve settings
 - pip vs pipx configurations
