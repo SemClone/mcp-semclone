@@ -93,7 +93,7 @@ pipx inject mcp-semclone purl2notices purl2src osslili binarysniffer ospac vulnq
 - ✅ Clean uninstall: `pipx uninstall mcp-semclone`
 
 
-** For detailed setup instructions including:**
+**For detailed setup instructions including:**
 - IDE-specific configurations (Cursor, Cline, Kiro, VS Code, JetBrains)
 - Auto-approve settings
 - pip vs pipx configurations
