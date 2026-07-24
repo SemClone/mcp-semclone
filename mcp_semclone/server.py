@@ -662,6 +662,15 @@ async def check_package(
                                         for lic in component["licenses"]:
                                             if "license" in lic and "id" in lic["license"]:
                                                 result["licenses"].append(lic["license"]["id"])
+                                    # osslili >= 1.7.0 reports licenses from bundled
+                                    # third-party notice files as properties rather than
+                                    # under component.licenses. A package archive's
+                                    # bundled licenses are in scope here, so collect them.
+                                    for prop in component.get("properties", []):
+                                        if prop.get("name") == "osslili:third-party-license":
+                                            lic_id = prop.get("value")
+                                            if lic_id and lic_id not in result["licenses"]:
+                                                result["licenses"].append(lic_id)
                             elif "licenses" in license_data:
                                 result["licenses"] = license_data["licenses"]
                             result["extraction_method"] = result.get("extraction_method", "osslili") or "upmex+osslili"
@@ -1865,13 +1874,21 @@ async def download_and_scan_package(
                                             if lic_id and lic_id not in result["detected_licenses"]:
                                                 result["detected_licenses"].append(lic_id)
 
-                                    # Extract copyrights
+                                    # Extract copyrights and bundled third-party licenses.
+                                    # osslili >= 1.7.0 keeps licenses from bundled notice
+                                    # files (THIRD_PARTY_NOTICES.txt and friends) out of
+                                    # component.licenses and reports them as properties;
+                                    # for a deep scan those are exactly what we want.
                                     if comp.get("properties"):
                                         for prop in comp["properties"]:
                                             if prop.get("name") == "copyright":
                                                 copyright = prop.get("value")
                                                 if copyright and copyright not in result["copyright_statements"]:
                                                     result["copyright_statements"].append(copyright)
+                                            elif prop.get("name") == "osslili:third-party-license":
+                                                lic_id = prop.get("value")
+                                                if lic_id and lic_id not in result["detected_licenses"]:
+                                                    result["detected_licenses"].append(lic_id)
 
                             result["files_scanned"] = len(osslili_data.get("components", []))
                             logger.info(f"osslili deep scan: {len(result['detected_licenses'])} licenses, {result['files_scanned']} files")

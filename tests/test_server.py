@@ -863,6 +863,212 @@ class TestDownloadAndScanPackage:
             assert "Apache-2.0" in result["detected_licenses"]  # Added from parent POM
             assert len(result["detected_licenses"]) == 2  # Both licenses
             assert result["metadata"].get("license_source") == "parent_pom_via_clearlydefined"
-            
+
             # Verify summary mentions parent POM
             assert "parent pom" in result["scan_summary"].lower()
+
+
+class TestThirdPartyLicenseProperties:
+    """osslili >= 1.7.0 reports bundled third-party licenses as CycloneDX properties.
+
+    Licenses found in bundled notice files (THIRD_PARTY_NOTICES.txt, 3rdpartylicenses.txt)
+    are no longer listed under component.licenses; they are emitted as
+    `osslili:third-party-license` properties so consumers determining a project's own
+    license can filter them out. Artifact scans still need to surface them.
+    """
+
+    @staticmethod
+    def _deep_scan_mocks(osslili_data, upmex_data=None):
+        """Build the _run_tool side effect that forces the deep-scan path."""
+        purl2src_data = [{
+            "purl": "pkg:npm/express@4.21.2",
+            "download_url": "https://registry.npmjs.org/express/-/express-4.21.2.tgz",
+            "validated": True
+        }]
+        upmex_data = upmex_data if upmex_data is not None else {
+            "name": "express",
+            "version": "4.21.2"
+        }
+
+        def run_tool_side_effect(tool_name, args, *a, **kw):
+            if tool_name == "purl2notices":
+                return MagicMock(returncode=1, stdout="", stderr="failed")
+            elif tool_name == "purl2src":
+                return MagicMock(returncode=0, stdout=json.dumps(purl2src_data))
+            elif tool_name == "osslili":
+                return MagicMock(returncode=0, stdout=json.dumps(osslili_data))
+            elif tool_name == "upmex":
+                return MagicMock(returncode=0, stdout=json.dumps(upmex_data))
+            return MagicMock(returncode=1, stdout="")
+
+        return run_tool_side_effect
+
+    @pytest.mark.asyncio
+    async def test_deep_scan_collects_third_party_license_properties(self):
+        """Bundled third-party licenses must land in detected_licenses."""
+        osslili_data = {
+            "components": [{
+                "licenses": [{"license": {"id": "Apache-2.0"}}],
+                "properties": [
+                    {"name": "copyright", "value": "Copyright Test"},
+                    {"name": "osslili:third-party-license", "value": "MIT"},
+                    {"name": "osslili:third-party-license", "value": "BSD-3-Clause"}
+                ]
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve"), \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            mock_run.side_effect = self._deep_scan_mocks(osslili_data)
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2"
+            )
+
+            assert result["method_used"] == "deep_scan"
+            # The component's own license is still collected
+            assert "Apache-2.0" in result["detected_licenses"]
+            # ...and the bundled third-party licenses are no longer dropped
+            assert "MIT" in result["detected_licenses"]
+            assert "BSD-3-Clause" in result["detected_licenses"]
+            # The copyright property is still handled
+            assert "Copyright Test" in result["copyright_statements"]
+
+    @pytest.mark.asyncio
+    async def test_deep_scan_third_party_only_component(self):
+        """A component whose only licenses are bundled notices still reports them."""
+        osslili_data = {
+            "components": [{
+                "properties": [
+                    {"name": "osslili:third-party-license", "value": "MIT"}
+                ]
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve"), \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            mock_run.side_effect = self._deep_scan_mocks(osslili_data)
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2"
+            )
+
+            assert result["detected_licenses"] == ["MIT"]
+
+    @pytest.mark.asyncio
+    async def test_deep_scan_third_party_licenses_are_deduplicated(self):
+        """The same third-party license across components is recorded once."""
+        osslili_data = {
+            "components": [
+                {"properties": [{"name": "osslili:third-party-license", "value": "MIT"}]},
+                {"properties": [{"name": "osslili:third-party-license", "value": "MIT"}]},
+                {"licenses": [{"license": {"id": "MIT"}}]}
+            ]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve"), \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            mock_run.side_effect = self._deep_scan_mocks(osslili_data)
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2"
+            )
+
+            assert result["detected_licenses"] == ["MIT"]
+
+    @pytest.mark.asyncio
+    async def test_deep_scan_pre_1_7_0_output_unaffected(self):
+        """osslili output without the new property behaves exactly as before."""
+        osslili_data = {
+            "components": [{
+                "licenses": [{"license": {"id": "MIT"}}],
+                "properties": [
+                    {"name": "copyright", "value": "Copyright Test"}
+                ]
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("urllib.request.urlretrieve"), \
+             patch("tempfile.mkdtemp", return_value="/tmp/test"), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("shutil.rmtree"):
+
+            mock_run.side_effect = self._deep_scan_mocks(osslili_data)
+
+            result = await server_module.download_and_scan_package(
+                purl="pkg:npm/express@4.21.2"
+            )
+
+            assert result["detected_licenses"] == ["MIT"]
+            assert result["copyright_statements"] == ["Copyright Test"]
+
+    @pytest.mark.asyncio
+    async def test_check_package_collects_third_party_license_properties(self):
+        """check_package scans an artifact, so bundled licenses belong in the output."""
+        osslili_data = {
+            "components": [{
+                "licenses": [{"license": {"id": "Apache-2.0"}}],
+                "properties": [
+                    {"name": "osslili:third-party-license", "value": "MIT"},
+                    {"name": "osslili:third-party-license", "value": "ISC"}
+                ]
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("pathlib.Path.exists", return_value=True):
+
+            def run_tool_side_effect(tool_name, args, *a, **kw):
+                if tool_name == "osslili":
+                    return MagicMock(returncode=0, stdout=json.dumps(osslili_data))
+                return MagicMock(returncode=1, stdout="", stderr="failed")
+
+            mock_run.side_effect = run_tool_side_effect
+
+            result = await server_module.check_package(
+                "/tmp/express-4.21.2.tgz",
+                check_vulnerabilities=False
+            )
+
+            assert "Apache-2.0" in result["licenses"]
+            assert "MIT" in result["licenses"]
+            assert "ISC" in result["licenses"]
+
+    @pytest.mark.asyncio
+    async def test_check_package_pre_1_7_0_output_unaffected(self):
+        """A component with no properties key is handled without error."""
+        osslili_data = {
+            "components": [{
+                "licenses": [{"license": {"id": "Apache-2.0"}}]
+            }]
+        }
+
+        with patch("mcp_semclone.server._run_tool") as mock_run, \
+             patch("pathlib.Path.exists", return_value=True):
+
+            def run_tool_side_effect(tool_name, args, *a, **kw):
+                if tool_name == "osslili":
+                    return MagicMock(returncode=0, stdout=json.dumps(osslili_data))
+                return MagicMock(returncode=1, stdout="", stderr="failed")
+
+            mock_run.side_effect = run_tool_side_effect
+
+            result = await server_module.check_package(
+                "/tmp/express-4.21.2.tgz",
+                check_vulnerabilities=False
+            )
+
+            assert result["licenses"] == ["Apache-2.0"]
