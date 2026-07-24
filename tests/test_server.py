@@ -495,7 +495,8 @@ class TestScanResult:
 class TestRunTool:
     """Test cases for the _run_tool function."""
 
-    def test_run_tool_success(self):
+    @pytest.mark.asyncio
+    async def test_run_tool_success(self):
         """Test successful tool execution."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
@@ -504,13 +505,14 @@ class TestRunTool:
                 stderr=""
             )
 
-            result = _run_tool("test_tool", ["--arg1", "value1"])
+            result = await _run_tool("test_tool", ["--arg1", "value1"])
 
             assert result.returncode == 0
             assert result.stdout == "success output"
             mock_run.assert_called_once()
 
-    def test_run_tool_with_input(self):
+    @pytest.mark.asyncio
+    async def test_run_tool_with_input(self):
         """Test tool execution with input data."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
@@ -519,27 +521,100 @@ class TestRunTool:
                 stderr=""
             )
 
-            result = _run_tool("test_tool", ["--json"], input_data='{"test": "data"}')
+            await _run_tool("test_tool", ["--json"], input_data='{"test": "data"}')
 
             mock_run.assert_called_once()
             call_args = mock_run.call_args
             assert call_args[1]["input"] == '{"test": "data"}'
 
-    def test_run_tool_timeout(self):
+    @pytest.mark.asyncio
+    async def test_run_tool_timeout(self):
         """Test tool timeout handling."""
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("cmd", 60)
 
             with pytest.raises(subprocess.TimeoutExpired):
-                _run_tool("test_tool", ["--slow"])
+                await _run_tool("test_tool", ["--slow"])
 
-    def test_run_tool_not_found(self):
+    @pytest.mark.asyncio
+    async def test_run_tool_not_found(self):
         """Test tool not found handling."""
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("command not found")
 
             with pytest.raises(FileNotFoundError):
-                _run_tool("nonexistent_tool", ["--help"])
+                await _run_tool("nonexistent_tool", ["--help"])
+
+class TestFindTool:
+    """Tool resolution, including the venv fallback for GUI-launched servers."""
+
+    def setup_method(self):
+        server_module._tool_cache.clear()
+
+    def teardown_method(self):
+        server_module._tool_cache.clear()
+
+    def test_venv_bin_is_used_when_not_on_path(self, tmp_path):
+        """A GUI client's PATH may omit the venv, so look beside this interpreter."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        tool = bin_dir / "osslili"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(0o755)
+
+        with patch("shutil.which", return_value=None), \
+             patch.dict("os.environ", {}, clear=True), \
+             patch("mcp_semclone.server.sys.executable", str(bin_dir / "python")), \
+             patch("mcp_semclone.server.sys.prefix", str(tmp_path)):
+
+            assert server_module._find_tool("osslili") == str(tool)
+
+    def test_path_wins_over_venv_bin(self, tmp_path):
+        """shutil.which is still checked first."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        tool = bin_dir / "osslili"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(0o755)
+
+        with patch("shutil.which", return_value="/usr/local/bin/osslili"), \
+             patch.dict("os.environ", {}, clear=True), \
+             patch("mcp_semclone.server.sys.executable", str(bin_dir / "python")):
+
+            assert server_module._find_tool("osslili") == "/usr/local/bin/osslili"
+
+    def test_env_var_wins_over_everything(self, tmp_path):
+        """An explicit OSSLILI_PATH takes precedence."""
+        with patch("shutil.which", return_value="/usr/local/bin/osslili"), \
+             patch.dict("os.environ", {"OSSLILI_PATH": "/custom/osslili"}, clear=True):
+
+            assert server_module._find_tool("osslili") == "/custom/osslili"
+
+    def test_non_executable_sibling_is_ignored(self, tmp_path):
+        """A same-named file that is not executable must not be selected."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        tool = bin_dir / "osslili"
+        tool.write_text("not executable")
+        tool.chmod(0o644)
+
+        with patch("shutil.which", return_value=None), \
+             patch.dict("os.environ", {}, clear=True), \
+             patch("mcp_semclone.server.sys.executable", str(bin_dir / "python")), \
+             patch("mcp_semclone.server.sys.prefix", str(tmp_path)):
+
+            # Falls through to the bare name rather than an unusable path
+            assert server_module._find_tool("osslili") == "osslili"
+
+    def test_falls_back_to_bare_name(self):
+        """With nothing found anywhere, the bare name is returned."""
+        with patch("shutil.which", return_value=None), \
+             patch.dict("os.environ", {}, clear=True), \
+             patch("mcp_semclone.server.sys.executable", "/nowhere/python"), \
+             patch("mcp_semclone.server.sys.prefix", "/nowhere"):
+
+            assert server_module._find_tool("osslili") == "osslili"
+
 
 class TestDownloadAndScanPackage:
     """Test cases for download_and_scan_package tool."""
