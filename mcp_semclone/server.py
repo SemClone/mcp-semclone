@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """MCP Server for SEMCL.ONE OSS Compliance Toolchain."""
 
+import asyncio
 import json
 import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -227,7 +229,8 @@ def _find_tool(tool_name: str) -> str:
     1. Check cache for previous successful lookup
     2. Check environment variable (e.g., OSSLILI_PATH for osslili)
     3. Use shutil.which() to find tool in PATH
-    4. Fall back to tool name itself (will fail if not found)
+    4. Look in this server's own venv bin, for GUI clients whose PATH omits it
+    5. Fall back to tool name itself (will fail if not found)
 
     Args:
         tool_name: Name of the tool (e.g., 'osslili', 'binarysniffer')
@@ -254,15 +257,34 @@ def _find_tool(tool_name: str) -> str:
         _tool_cache[tool_name] = detected_path
         return detected_path
 
+    # Look in the same venv as this server. The SEMCL.ONE tools are installed
+    # into the venv's bin/ alongside this server, so this resolves them even when
+    # the server is launched by a GUI client (Cursor, Claude Desktop) whose PATH
+    # does not include the venv or ~/.local/bin.
+    # Do NOT resolve() sys.executable: in a pipx/venv it is a symlink to the base
+    # interpreter, and following it would leave the venv bin (where the tools are).
+    candidate_dirs = [Path(sys.executable).parent, Path(sys.prefix) / "bin"]
+    for bin_dir in candidate_dirs:
+        sibling = bin_dir / tool_name
+        if sibling.is_file() and os.access(sibling, os.X_OK):
+            logger.debug(f"Found {tool_name} in venv bin: {sibling}")
+            _tool_cache[tool_name] = str(sibling)
+            return str(sibling)
+
     # Fall back to tool name (will fail if not in PATH)
     logger.debug(f"Tool {tool_name} not found via environment or PATH, using bare name")
     _tool_cache[tool_name] = tool_name
     return tool_name
 
 
-def _run_tool(tool_name: str, args: List[str],
-              input_data: Optional[str] = None, timeout: int = 120) -> subprocess.CompletedProcess:
+async def _run_tool(tool_name: str, args: List[str],
+                    input_data: Optional[str] = None, timeout: int = 120) -> subprocess.CompletedProcess:
     """Run a SEMCL.ONE tool with error handling and auto-detection.
+
+    The blocking subprocess call is offloaded to a worker thread so it never
+    stalls the asyncio event loop. Blocking the loop would freeze the entire MCP
+    stdio transport (no responses, pings, or concurrent tool calls) for the whole
+    duration of the child process — up to the timeout.
 
     Args:
         tool_name: Name of the tool (e.g., 'osslili', 'binarysniffer')
@@ -282,7 +304,8 @@ def _run_tool(tool_name: str, args: List[str],
         cmd = [tool_path] + args
         logger.debug(f"Running command: {' '.join(cmd)}")
 
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             cmd,
             input=input_data,
             capture_output=True,
@@ -423,7 +446,7 @@ async def scan_directory(
                 purl2notices_args.extend(["-r", "--max-depth", "3"])
 
             # Run purl2notices scan
-            scan_result_output = _run_tool("purl2notices", purl2notices_args)
+            scan_result_output = await _run_tool("purl2notices", purl2notices_args)
 
             # Read the JSON output file
             if os.path.exists(temp_json_path):
@@ -503,7 +526,7 @@ async def scan_directory(
             if license_list:
                 licenses_str = ",".join(license_list)
                 ospac_args = ["evaluate", "-l", licenses_str, "--policy-dir", policy_file, "-o", "json"]
-                ospac_result = _run_tool("ospac", ospac_args, input_data=None)
+                ospac_result = await _run_tool("ospac", ospac_args, input_data=None)
                 if ospac_result.returncode == 0 and ospac_result.stdout:
                     policy_result = json.loads(ospac_result.stdout)
                     # Check if result indicates violations (action is deny or review)
@@ -523,7 +546,7 @@ async def scan_directory(
                 purl = package.get("purl")
                 if purl:
                     vulnq_args = [purl, "--format", "json"]
-                    vulnq_result = _run_tool("vulnq", vulnq_args)
+                    vulnq_result = await _run_tool("vulnq", vulnq_args)
                     if vulnq_result.returncode == 0 and vulnq_result.stdout:
                         vuln_data = json.loads(vulnq_result.stdout)
                         if vuln_data.get("vulnerabilities"):
@@ -609,7 +632,7 @@ async def check_package(
                 # Try upmex first for package archives
                 logger.info(f"Detected archive file, attempting upmex extraction: {identifier}")
                 try:
-                    upmex_result = _run_tool("upmex", ["extract", identifier], timeout=60)
+                    upmex_result = await _run_tool("upmex", ["extract", identifier], timeout=60)
                     if upmex_result.returncode == 0 and upmex_result.stdout:
                         logger.info(f"upmex raw stdout length: {len(upmex_result.stdout)}")
                         if not upmex_result.stdout.strip():
@@ -644,7 +667,7 @@ async def check_package(
             # Run osslili on the file/archive
             if not identifier.startswith("pkg:") and not identifier.startswith("cpe:"):
                 try:
-                    osslili_result = _run_tool("osslili", [identifier, "-f", "cyclonedx-json"], timeout=60)
+                    osslili_result = await _run_tool("osslili", [identifier, "-f", "cyclonedx-json"], timeout=60)
                     logger.info(f"osslili return code: {osslili_result.returncode}, stdout length: {len(osslili_result.stdout)}, stderr length: {len(osslili_result.stderr)}")
 
                     if osslili_result.returncode == 0 and osslili_result.stdout:
@@ -690,7 +713,7 @@ async def check_package(
         # Check vulnerabilities if requested
         if check_vulnerabilities:
             if result["purl"]:
-                vulnq_result = _run_tool("vulnq", [result["purl"], "--format", "json"], timeout=30)
+                vulnq_result = await _run_tool("vulnq", [result["purl"], "--format", "json"], timeout=30)
                 if vulnq_result.returncode == 0 and vulnq_result.stdout:
                     vuln_data = json.loads(vulnq_result.stdout)
                     result["vulnerabilities"] = vuln_data
@@ -796,7 +819,7 @@ async def validate_policy(
             ospac_args.extend(["--policy-dir", policy_file])
 
         # Run validation (no stdin input needed)
-        result = _run_tool("ospac", ospac_args, input_data=None)
+        result = await _run_tool("ospac", ospac_args, input_data=None)
 
         if result.returncode == 0 and result.stdout:
             policy_result = json.loads(result.stdout)
@@ -858,7 +881,7 @@ async def get_license_obligations(
         ospac_args = ["obligations", "-l", licenses_str, "-f", output_format]
 
         logger.info(f"Getting obligations for licenses: {licenses_str}")
-        result = _run_tool("ospac", ospac_args, input_data=None)
+        result = await _run_tool("ospac", ospac_args, input_data=None)
 
         if result.returncode == 0 and result.stdout:
             if output_format == "json":
@@ -916,7 +939,7 @@ async def check_license_compatibility(
         ospac_args = ["check", license1, license2, "-c", context, "-o", "json"]
 
         logger.info(f"Checking compatibility: {license1} vs {license2} (context: {context})")
-        result = _run_tool("ospac", ospac_args, input_data=None)
+        result = await _run_tool("ospac", ospac_args, input_data=None)
 
         if result.returncode == 0 and result.stdout:
             data = json.loads(result.stdout)
@@ -971,7 +994,7 @@ async def get_license_details(
         ospac_args = ["data", "show", license_id, "-f", "json"]
 
         logger.info(f"Getting details for license: {license_id}")
-        result = _run_tool("ospac", ospac_args, input_data=None)
+        result = await _run_tool("ospac", ospac_args, input_data=None)
 
         if result.returncode == 0 and result.stdout:
             data = json.loads(result.stdout)
@@ -990,12 +1013,16 @@ async def get_license_details(
 
                     logger.info(f"Fetching full license text from SPDX for {license_id}")
 
-                    req = urllib.request.Request(spdx_url)
-                    with urllib.request.urlopen(req, timeout=10) as response:
-                        full_text = response.read().decode('utf-8')
-                        license_info["full_text"] = full_text
-                        license_info["full_text_source"] = "SPDX License List (GitHub)"
-                        logger.info(f"Successfully fetched {len(full_text)} characters of license text")
+                    def _fetch_spdx_text():
+                        req = urllib.request.Request(spdx_url)
+                        with urllib.request.urlopen(req, timeout=10) as response:
+                            return response.read().decode('utf-8')
+
+                    # Offloaded to a thread so the network wait never blocks the event loop
+                    full_text = await asyncio.to_thread(_fetch_spdx_text)
+                    license_info["full_text"] = full_text
+                    license_info["full_text_source"] = "SPDX License List (GitHub)"
+                    logger.info(f"Successfully fetched {len(full_text)} characters of license text")
 
                 except urllib.error.HTTPError as e:
                     if e.code == 404:
@@ -1458,7 +1485,7 @@ async def generate_legal_notices(
 
         # Run purl2notices in scan mode - reads source code directly
         cmd = [
-            "purl2notices",
+            _find_tool("purl2notices"),
             "-i", path,
             "-m", "scan",  # Scan mode - reads source code directly
             "-o", output_path,
@@ -1470,8 +1497,9 @@ async def generate_legal_notices(
 
         logger.info(f"Running purl2notices: {' '.join(cmd)}")
 
-        # Run purl2notices
-        result = subprocess.run(
+        # Run purl2notices (offloaded to a thread so the event loop stays responsive)
+        result = await asyncio.to_thread(
+            subprocess.run,
             cmd,
             capture_output=True,
             text=True,
@@ -1605,7 +1633,7 @@ async def generate_legal_notices_from_purls(
 
         # Run purl2notices with PURL list - downloads from registries
         cmd = [
-            "purl2notices",
+            _find_tool("purl2notices"),
             "-i", purl_file_path,
             "-o", output_path,
             "-f", output_format
@@ -1613,8 +1641,9 @@ async def generate_legal_notices_from_purls(
 
         logger.info(f"Running purl2notices: {' '.join(cmd)}")
 
-        # Run purl2notices
-        result = subprocess.run(
+        # Run purl2notices (offloaded to a thread so the event loop stays responsive)
+        result = await asyncio.to_thread(
+            subprocess.run,
             cmd,
             capture_output=True,
             text=True,
@@ -1772,7 +1801,7 @@ async def download_and_scan_package(
         logger.info(f"Step 1: Trying purl2notices (primary method)")
         try:
             temp_cache = tempfile.mktemp(suffix=".json")
-            purl2notices_result = _run_tool("purl2notices", [
+            purl2notices_result = await _run_tool("purl2notices", [
                 "-i", purl,
                 "--cache", temp_cache,
                 "-f", "json",
@@ -1830,7 +1859,7 @@ async def download_and_scan_package(
             result["methods_attempted"].append("deep_scan")
 
             # Get download URL using purl2src
-            purl2src_result = _run_tool("purl2src", [purl, "--format", "json"])
+            purl2src_result = await _run_tool("purl2src", [purl, "--format", "json"])
 
             if purl2src_result.returncode == 0 and purl2src_result.stdout:
                 purl2src_data = json.loads(purl2src_result.stdout)
@@ -1847,14 +1876,14 @@ async def download_and_scan_package(
                         download_file = Path(temp_dir) / filename
 
                         logger.info(f"Downloading from: {download_url}")
-                        urllib.request.urlretrieve(download_url, download_file)
+                        await asyncio.to_thread(urllib.request.urlretrieve, download_url, download_file)
 
                         if keep_download:
                             result["download_path"] = str(download_file)
 
                         # Run osslili on downloaded file
                         logger.info(f"Running osslili on {download_file}")
-                        osslili_result = _run_tool("osslili", [
+                        osslili_result = await _run_tool("osslili", [
                             str(download_file),
                             "-f", "cyclonedx-json"
                         ])
@@ -1897,7 +1926,7 @@ async def download_and_scan_package(
 
                         # Run upmex on downloaded file
                         logger.info(f"Running upmex on {download_file}")
-                        upmex_result = _run_tool("upmex", ["extract", str(download_file), "--format", "json"])
+                        upmex_result = await _run_tool("upmex", ["extract", str(download_file), "--format", "json"])
 
                         if upmex_result.returncode == 0 and upmex_result.stdout:
                             upmex_data = json.loads(upmex_result.stdout)
@@ -1918,7 +1947,7 @@ async def download_and_scan_package(
                         if purl.startswith("pkg:maven/") and not result["declared_license"]:
                             logger.info(f"Maven package missing declared license (may have detected licenses from source), checking parent POM")
                             try:
-                                upmex_maven_result = _run_tool("upmex", [
+                                upmex_maven_result = await _run_tool("upmex", [
                                     "extract",
                                     str(download_file),
                                     "--format", "json",
@@ -1977,7 +2006,7 @@ async def download_and_scan_package(
             with open(temp_file, 'w') as f:
                 f.write(purl)
 
-            upmex_online_result = _run_tool("upmex", [
+            upmex_online_result = await _run_tool("upmex", [
                 "extract",
                 temp_file,
                 "--api", "clearlydefined",
@@ -2282,7 +2311,7 @@ async def scan_binary(
             cmd.extend(["--show-files", "-o", "-", "-f", "json"])
 
             # Execute license analysis
-            license_result = _run_tool("binarysniffer", cmd[1:], timeout=300)
+            license_result = await _run_tool("binarysniffer", cmd[1:], timeout=300)
 
             if license_result.returncode == 0 and license_result.stdout:
                 license_data = json.loads(license_result.stdout)
@@ -2316,7 +2345,7 @@ async def scan_binary(
             analyze_cmd.append("--license-focus")
 
         # Execute analysis
-        analyze_result = _run_tool("binarysniffer", analyze_cmd, timeout=300)
+        analyze_result = await _run_tool("binarysniffer", analyze_cmd, timeout=300)
 
         if analyze_result.returncode == 0 and analyze_result.stdout:
             analysis_data = json.loads(analyze_result.stdout)
