@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
+from mcp_semclone import __version__
+
 # Configure logging
 log_level = os.environ.get("MCP_LOG_LEVEL", "INFO")
 logging.basicConfig(
@@ -2141,7 +2143,7 @@ async def generate_sbom(
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                 "tools": [{
                     "name": "mcp-semclone",
-                    "version": "1.5.7"
+                    "version": __version__
                 }],
                 "component": {
                     "type": "application",
