@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-07-24
+
+### Fixed
+- Bundled third-party licenses are collected again from osslili CycloneDX output. osslili 1.7.0 moved licenses found in bundled notice files (THIRD_PARTY_NOTICES.txt, 3rdpartylicenses.txt) out of `component.licenses` and emits them as `osslili:third-party-license` component properties, which both osslili call sites ignored.
+  - `download_and_scan_package` deep scan now reads the property alongside the copyright property it already handled.
+  - `check_package` had no property handling at all and now collects them too.
+- For artifact scans these are exactly the licenses the scan is meant to surface, so losing them was a regression.
+
 ## [1.6.2] - 2025-01-18
 
 ### Changed
