@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_semclone.server import ScanResult, mcp, _run_tool
 from mcp_semclone import server as server_module
+from mcp_semclone import __version__
 
 
 class TestMCPServer:
@@ -225,6 +226,21 @@ class TestMCPServer:
             assert result["sbom"]["specVersion"] == "1.4"
             assert len(result["sbom"]["components"]) == 1
             assert result["sbom"]["components"][0]["name"] == "express"
+
+    @pytest.mark.asyncio
+    async def test_generate_sbom_reports_the_real_tool_version(self):
+        """The SBOM records which version produced it, so it must not be hardcoded."""
+        with patch("mcp_semclone.server.scan_directory") as mock_scan:
+            mock_scan.return_value = {
+                "packages": [{"purl": "pkg:npm/express@4.17.1"}],
+                "licenses": [{"spdx_id": "MIT"}]
+            }
+
+            result = await server_module.generate_sbom(path="/test")
+
+            tools = result["sbom"]["metadata"]["tools"]
+            assert tools[0]["name"] == "mcp-semclone"
+            assert tools[0]["version"] == __version__
 
     @pytest.mark.asyncio
     async def test_generate_sbom_with_output_file(self, tmp_path):
