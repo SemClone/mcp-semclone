@@ -632,7 +632,14 @@ async def check_package(
                 # Try upmex first for package archives
                 logger.info(f"Detected archive file, attempting upmex extraction: {identifier}")
                 try:
-                    upmex_result = await _run_tool("upmex", ["extract", identifier], timeout=60)
+                    # --format json, because the output is parsed as JSON
+                    # below. upmex reads output.format from its own config and
+                    # PME_OUTPUT_FORMAT, and from upmex 1.8.0 those settings
+                    # take effect, so stdout is only JSON if this asks for it.
+                    # The flag beats the config, which every other tool call
+                    # here already relies on.
+                    upmex_result = await _run_tool(
+                        "upmex", ["extract", identifier, "--format", "json"], timeout=60)
                     if upmex_result.returncode == 0 and upmex_result.stdout:
                         logger.info(f"upmex raw stdout length: {len(upmex_result.stdout)}")
                         if not upmex_result.stdout.strip():
