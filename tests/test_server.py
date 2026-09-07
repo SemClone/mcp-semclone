@@ -1163,3 +1163,87 @@ class TestThirdPartyLicenseProperties:
             )
 
             assert result["licenses"] == ["Apache-2.0"]
+
+
+
+class TestEveryParsedToolCallPinsItsFormat:
+    """A tool whose stdout is parsed as JSON must be asked for JSON.
+
+    upmex, ospac, osslili and binarysniffer each read an output format from
+    their own configuration and environment. upmex 1.8.0 made those settings
+    take effect, so `upmex extract <file>` with PME_OUTPUT_FORMAT=text in the
+    environment prints text and the json.loads that follows raises. A flag
+    beats the configuration, so passing one is what makes the parse safe.
+
+    Read from the syntax tree rather than by matching lines, because a call
+    long enough to need wrapping is exactly the one a line-based check misses.
+    """
+
+    @staticmethod
+    def _run_tool_calls():
+        import ast
+        from pathlib import Path
+        import mcp_semclone.server as server_module
+
+        tree = ast.parse(Path(server_module.__file__).read_text())
+        calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = getattr(func, 'id', None) or getattr(func, 'attr', None)
+            if name != '_run_tool' or not node.args:
+                continue
+            tool = node.args[0]
+            calls.append((
+                tool.value if isinstance(tool, ast.Constant) else '<dynamic>',
+                node.lineno,
+                ast.unparse(node),
+            ))
+        return calls
+
+    def test_the_calls_are_found_at_all(self):
+        """Guards the two tests below: a matcher that finds nothing passes
+        everything."""
+        calls = self._run_tool_calls()
+        assert len(calls) >= 10, f"only found {len(calls)} _run_tool calls"
+        assert any(tool == 'upmex' for tool, _, _ in calls)
+
+    def test_every_upmex_call_asks_for_json(self):
+        offenders = [
+            f"line {lineno}: {src}"
+            for tool, lineno, src in self._run_tool_calls()
+            if tool == 'upmex' and "'--format', 'json'" not in src
+        ]
+        assert offenders == [], (
+            "upmex output is parsed as JSON, so the format has to be asked "
+            "for:\n  " + "\n  ".join(offenders)
+        )
+
+    def test_no_call_leaves_its_format_to_the_environment(self):
+        """The upmex call that broke was the only one in the file not naming
+        a format. Checked across every tool so the next one is caught when it
+        is written rather than when it fails in production."""
+        source_lines = None
+        from pathlib import Path
+        import mcp_semclone.server as server_module
+        source_lines = Path(server_module.__file__).read_text().splitlines()
+
+        offenders = []
+        for tool, lineno, src in self._run_tool_calls():
+            following = "\n".join(source_lines[lineno - 1:lineno + 13])
+            if 'json.loads(' not in following:
+                continue
+            names_a_format = (
+                'json' in src.lower()
+                or 'output_format' in src
+                or '_args' in src
+                or 'cmd' in src
+            )
+            if not names_a_format:
+                offenders.append(f"line {lineno}: {src}")
+
+        assert offenders == [], (
+            "these calls parse stdout as JSON without asking for it:\n  "
+            + "\n  ".join(offenders)
+        )
