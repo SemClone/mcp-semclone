@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-09-07
+
+### Fixed
+- **`pip install mcp-semclone` produced a package that could not be imported.** The `mcp` dependency was floored at 1.0.0 with no ceiling, so a fresh install picked up mcp 2.0, which renamed `FastMCP` to `MCPServer`. Every import of `mcp.server.fastmcp` raised, and since 1.6.3 was published four days before mcp 2.0 shipped, that is what anyone installing from PyPI has been getting. Pinned to `mcp>=1.0.0,<2`; moving to the 2.x API is separate work.
+- `check_package` asked upmex to extract a package and parsed the result as JSON without asking for JSON. upmex reads `output.format` from its configuration and from `PME_OUTPUT_FORMAT`, and upmex 1.8.0 made those settings take effect, so the same command prints text wherever either names text and the parse fails. It now passes `--format json`, as every other tool call here already does.
+- The CycloneDX `metadata.tools` entry in `generate_sbom` carried the literal `1.5.7`. It states which tool version produced the SBOM, so a consumer reading it to work out which detection behaviour applied was pointed at the wrong release. It reports `__version__`.
+
+### Changed
+- `_run_tool` no longer blocks the asyncio loop. It called `subprocess.run` directly from async handlers, holding the loop for the life of the child process and stalling the whole stdio transport: no responses, no pings, no concurrent tool calls. The call is offloaded with `asyncio.to_thread`, as are the SPDX licence text fetch and the artifact download.
+- Tools are found beside the interpreter running the server. `_find_tool` looked only at an explicit `*_PATH` variable and `PATH`, and a GUI client such as Cursor or Claude Desktop often launches the server with neither the venv nor `~/.local/bin` on `PATH`, so no tool was found at all. It now also looks in `sys.executable`'s directory and `sys.prefix/bin`.
+
 ## [1.6.3] - 2026-07-24
 
 ### Fixed
