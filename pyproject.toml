@@ -41,7 +41,7 @@ dependencies = [
     # is why CI began failing on 2026-09-01 with nothing here having changed.
     # Pinned to keep v1 running; moving to the 2.x API is its own piece of
     # work: https://py.sdk.modelcontextprotocol.io/v2/migration/
-    "mcp>=1.0.0,<2",
+    "mcp>=1.0.0,<3",
     "purl2notices>=1.2.7",  # Primary scanning tool for scan_directory and SBOM generation
     "purl2src>=1.2.3",  # Used by download_and_scan_package to get artifact download URLs
     "ossnotices>=1.0.2",  # Simplified wrapper for legal notices generation
