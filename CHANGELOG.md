@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Moved to mcp 2.x.** The server is built on `MCPServer` from `mcp.server.mcpserver`, which replaced `FastMCP` in mcp 2.0. The `mcp<2` ceiling added in 1.6.4 is removed and the floor is now `mcp>=2.0.0`. Tool, resource and prompt definitions are unchanged.
+- The server now reports the package version in its `initialize` response. mcp 2 leaves the version empty unless the server passes one.
+
 ## [1.6.4] - 2026-09-07
 
 ### Fixed

@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field
 
 from mcp_semclone import __version__
@@ -36,9 +36,10 @@ class ScanResult(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-# Initialize FastMCP server
-mcp = FastMCP(
+# Initialize the MCP server
+mcp = MCPServer(
     name="mcp-semclone",
+    version=__version__,
     instructions="""Open source compliance and software supply chain security server using SEMCL.ONE toolchain.
 
 *** USE THIS SERVER WHEN USER ASKS ABOUT: ***
