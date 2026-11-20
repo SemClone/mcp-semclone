@@ -1,3 +1,8 @@
+# DEPRECATION NOTICE:
+mcp-semclone has been deprecated in favor of Earnie, the platform we launched with SCANOSS. Go to https://earnie.dev to continue.
+
+This repository is archived and receives no further updates.
+
 # mcp-semclone - Model Context Protocol Server for SEMCL.ONE
 
 [![Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
